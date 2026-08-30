@@ -1,0 +1,5 @@
+.git
+.vscode
+__debug_bin
+*.exe
+boko.exe

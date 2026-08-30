@@ -1,0 +1,534 @@
+{
+	"info": {
+		"name": "Boko API",
+		"description": "Collection test cho backend Boko - Sàn thương mại điện tử bán sách\n\nStack: Go + Gin + PostgreSQL\nDocker: http://localhost:8080\n\nTài khoản mặc định:\n- Admin: admin@boko.com / admin123456 (đầy đủ quyền)\n- Đăng ký customer/seller mới qua Register",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Auth",
+			"item": [
+				{
+					"name": "Register",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    console.log('✅ Đăng ký thành công!');",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"seller@test.com\",\n    \"password\": \"123456\",\n    \"name\": \"Người Bán Sách\"\n}"
+						},
+						"url": {
+							"raw": "{{BASE_URL}}/api/register",
+							"host": ["{{BASE_URL}}"],
+							"path": ["api", "register"]
+						}
+					}
+				},
+				{
+					"name": "Login Admin",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    var jsonData = pm.response.json();",
+									"    pm.collectionVariables.set('TOKEN', jsonData.token);",
+									"    console.log('✅ Token đã lưu:', jsonData.token.substring(0, 30) + '...');",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"admin@boko.com\",\n    \"password\": \"admin123456\"\n}"
+						},
+						"url": {
+							"raw": "{{BASE_URL}}/api/login",
+							"host": ["{{BASE_URL}}"],
+							"path": ["api", "login"]
+						}
+					}
+				},
+				{
+					"name": "Get Profile",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{TOKEN}}" }
+						],
+						"url": {
+							"raw": "{{BASE_URL}}/api/profile",
+							"host": ["{{BASE_URL}}"],
+							"path": ["api", "profile"]
+						}
+					}
+				},
+				{
+					"name": "Update Profile",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{TOKEN}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Admin Updated\"\n}"
+						},
+						"url": {
+							"raw": "{{BASE_URL}}/api/profile",
+							"host": ["{{BASE_URL}}"],
+							"path": ["api", "profile"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Books",
+			"item": [
+				{
+					"name": "Get All Books",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{BASE_URL}}/api/books?page=1&limit=10&sort=newest",
+							"host": ["{{BASE_URL}}"],
+							"path": ["api", "books"],
+							"query": [
+								{ "key": "page", "value": "1" },
+								{ "key": "limit", "value": "10" },
+								{ "key": "sort", "value": "newest" },
+								{ "key": "search", "value": "", "disabled": true },
+								{ "key": "category_id", "value": "", "disabled": true }
+							]
+						}
+					}
+				},
+				{
+					"name": "Get Book Detail",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{BASE_URL}}/api/books/1",
+							"host": ["{{BASE_URL}}"],
+							"path": ["api", "books", "1"]
+						}
+					}
+				},
+				{
+					"name": "Create Book (Seller)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{TOKEN}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"title\": \"Sách Mới\",\n    \"author\": \"Tác Giả\",\n    \"description\": \"Mô tả sách mới\",\n    \"price\": 99000,\n    \"stock\": 50,\n    \"category_id\": 1\n}"
+						},
+						"url": {
+							"raw": "{{BASE_URL}}/api/books",
+							"host": ["{{BASE_URL}}"],
+							"path": ["api", "books"]
+						}
+					}
+				},
+				{
+					"name": "Update Book (Seller)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{TOKEN}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"title\": \"Sách Đã Sửa\",\n    \"price\": 120000\n}"
+						},
+						"url": {
+							"raw": "{{BASE_URL}}/api/books/1",
+							"host": ["{{BASE_URL}}"],
+							"path": ["api", "books", "1"]
+						}
+					}
+				},
+				{
+					"name": "Delete Book (Seller)",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{TOKEN}}" }
+						],
+						"url": {
+							"raw": "{{BASE_URL}}/api/books/1",
+							"host": ["{{BASE_URL}}"],
+							"path": ["api", "books", "1"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Categories",
+			"item": [
+				{
+					"name": "Get Categories",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{BASE_URL}}/api/categories",
+							"host": ["{{BASE_URL}}"],
+							"path": ["api", "categories"]
+						}
+					}
+				},
+				{
+					"name": "Get Category Detail",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{BASE_URL}}/api/categories/1",
+							"host": ["{{BASE_URL}}"],
+							"path": ["api", "categories", "1"]
+						}
+					}
+				},
+				{
+					"name": "Create Category (Admin)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{TOKEN}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Danh Mục Mới\",\n    \"description\": \"Mô tả danh mục\"\n}"
+						},
+						"url": {
+							"raw": "{{BASE_URL}}/api/categories",
+							"host": ["{{BASE_URL}}"],
+							"path": ["api", "categories"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Cart",
+			"item": [
+				{
+					"name": "Get Cart",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{TOKEN}}" }
+						],
+						"url": {
+							"raw": "{{BASE_URL}}/api/cart",
+							"host": ["{{BASE_URL}}"],
+							"path": ["api", "cart"]
+						}
+					}
+				},
+				{
+					"name": "Add to Cart",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{TOKEN}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"book_id\": 1,\n    \"quantity\": 2\n}"
+						},
+						"url": {
+							"raw": "{{BASE_URL}}/api/cart",
+							"host": ["{{BASE_URL}}"],
+							"path": ["api", "cart"]
+						}
+					}
+				},
+				{
+					"name": "Update Cart Item",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{TOKEN}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"quantity\": 5\n}"
+						},
+						"url": {
+							"raw": "{{BASE_URL}}/api/cart/1",
+							"host": ["{{BASE_URL}}"],
+							"path": ["api", "cart", "1"]
+						}
+					}
+				},
+				{
+					"name": "Remove from Cart",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{TOKEN}}" }
+						],
+						"url": {
+							"raw": "{{BASE_URL}}/api/cart/1",
+							"host": ["{{BASE_URL}}"],
+							"path": ["api", "cart", "1"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Orders",
+			"item": [
+				{
+					"name": "Create Order",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{TOKEN}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"shipping_address\": \"123 Nguyễn Huệ, Q1, TP.HCM\",\n    \"phone\": \"0909123456\",\n    \"payment_method\": \"cod\",\n    \"coupon_code\": \"\"\n}"
+						},
+						"url": {
+							"raw": "{{BASE_URL}}/api/orders",
+							"host": ["{{BASE_URL}}"],
+							"path": ["api", "orders"]
+						}
+					}
+				},
+				{
+					"name": "Get My Orders",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{TOKEN}}" }
+						],
+						"url": {
+							"raw": "{{BASE_URL}}/api/orders",
+							"host": ["{{BASE_URL}}"],
+							"path": ["api", "orders"]
+						}
+					}
+				},
+				{
+					"name": "Get Order Detail",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{TOKEN}}" }
+						],
+						"url": {
+							"raw": "{{BASE_URL}}/api/orders/1",
+							"host": ["{{BASE_URL}}"],
+							"path": ["api", "orders", "1"]
+						}
+					}
+				},
+				{
+					"name": "Cancel Order",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{TOKEN}}" }
+						],
+						"url": {
+							"raw": "{{BASE_URL}}/api/orders/1/cancel",
+							"host": ["{{BASE_URL}}"],
+							"path": ["api", "orders", "1", "cancel"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Reviews",
+			"item": [
+				{
+					"name": "Get Book Reviews",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{BASE_URL}}/api/books/1/reviews",
+							"host": ["{{BASE_URL}}"],
+							"path": ["api", "books", "1", "reviews"]
+						}
+					}
+				},
+				{
+					"name": "Create Review",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{TOKEN}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"rating\": 5,\n    \"comment\": \"Sách rất hay, đáng đọc!\"\n}"
+						},
+						"url": {
+							"raw": "{{BASE_URL}}/api/books/1/reviews",
+							"host": ["{{BASE_URL}}"],
+							"path": ["api", "books", "1", "reviews"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Coupons",
+			"item": [
+				{
+					"name": "Get Coupons",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{TOKEN}}" }
+						],
+						"url": {
+							"raw": "{{BASE_URL}}/api/coupons",
+							"host": ["{{BASE_URL}}"],
+							"path": ["api", "coupons"]
+						}
+					}
+				},
+				{
+					"name": "Create Coupon (Seller)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{TOKEN}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"code\": \"SALE20\",\n    \"discount_percent\": 20,\n    \"max_uses\": 100,\n    \"expires_at\": \"2026-12-31T23:59:59+07:00\"\n}"
+						},
+						"url": {
+							"raw": "{{BASE_URL}}/api/coupons",
+							"host": ["{{BASE_URL}}"],
+							"path": ["api", "coupons"]
+						}
+					}
+				},
+				{
+					"name": "Apply Coupon",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{TOKEN}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"code\": \"SALE20\"\n}"
+						},
+						"url": {
+							"raw": "{{BASE_URL}}/api/apply-coupon",
+							"host": ["{{BASE_URL}}"],
+							"path": ["api", "apply-coupon"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Seller Dashboard",
+			"item": [
+				{
+					"name": "My Books (Seller)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{TOKEN}}" }
+						],
+						"url": {
+							"raw": "{{BASE_URL}}/api/seller/books",
+							"host": ["{{BASE_URL}}"],
+							"path": ["api", "seller", "books"]
+						}
+					}
+				},
+				{
+					"name": "My Orders (Seller)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{TOKEN}}" }
+						],
+						"url": {
+							"raw": "{{BASE_URL}}/api/seller/orders",
+							"host": ["{{BASE_URL}}"],
+							"path": ["api", "seller", "orders"]
+						}
+					}
+				},
+				{
+					"name": "Update Order Status",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{TOKEN}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"status\": \"confirmed\"\n}"
+						},
+						"url": {
+							"raw": "{{BASE_URL}}/api/seller/orders/1/status",
+							"host": ["{{BASE_URL}}"],
+							"path": ["api", "seller", "orders", "1", "status"]
+						}
+					}
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "BASE_URL",
+			"value": "http://localhost:8080"
+		},
+		{
+			"key": "TOKEN",
+			"value": ""
+		}
+	]
+}
