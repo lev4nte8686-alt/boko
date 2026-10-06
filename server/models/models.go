@@ -32,9 +32,9 @@ type Book struct {
 	Price       float64   `json:"price" gorm:"not null"`
 	Stock       int       `json:"stock" gorm:"default:0"`
 	ImageURL    string    `json:"image_url"`
-	CategoryID  *uint     `json:"category_id"`                         // FK → Category (nullable)
+	CategoryID  *uint     `json:"category_id"` // FK → Category (nullable)
 	Category    *Category `json:"category,omitempty" gorm:"foreignKey:CategoryID"`
-	UserID      uint      `json:"user_id"`                             // FK → User (seller)
+	UserID      uint      `json:"user_id"` // FK → User (seller)
 	User        *User     `json:"user,omitempty" gorm:"foreignKey:UserID"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
@@ -43,8 +43,8 @@ type Book struct {
 // Cart — giỏ hàng
 type Cart struct {
 	ID        uint      `json:"id" gorm:"primaryKey"`
-	UserID    uint      `json:"user_id" gorm:"uniqueIndex:idx_user_book"`   // FK → User
-	BookID    uint      `json:"book_id" gorm:"uniqueIndex:idx_user_book"`   // FK → Book
+	UserID    uint      `json:"user_id" gorm:"uniqueIndex:idx_user_book"` // FK → User
+	BookID    uint      `json:"book_id" gorm:"uniqueIndex:idx_user_book"` // FK → Book
 	Book      *Book     `json:"book,omitempty" gorm:"foreignKey:BookID"`
 	Quantity  int       `json:"quantity" gorm:"default:1"`
 	CreatedAt time.Time `json:"created_at"`
@@ -53,19 +53,19 @@ type Cart struct {
 
 // Order — đơn hàng
 type Order struct {
-	ID              uint        `json:"id" gorm:"primaryKey"`
-	UserID          uint        `json:"user_id"`
-	User            *User       `json:"user,omitempty" gorm:"foreignKey:UserID"`
-	Total           float64     `json:"total"`
-	Status          string      `json:"status" gorm:"default:pending"` // pending, confirmed, shipping, completed, cancelled
-	ShippingAddress string      `json:"shipping_address"`
-	Phone           string      `json:"phone"`
-	PaymentMethod   string      `json:"payment_method" gorm:"default:cod"` // cod | momo
-	CouponCode      string      `json:"coupon_code"`
-	DiscountPercent int         `json:"discount_percent" gorm:"default:0"`
-	Items           []OrderItem `json:"items,omitempty" gorm:"foreignKey:OrderID"`
-	CreatedAt       time.Time   `json:"created_at"`
-	UpdatedAt       time.Time   `json:"updated_at"`
+	ID              uint            `json:"id" gorm:"primaryKey"`
+	UserID          uint            `json:"user_id"`
+	User            *User           `json:"user,omitempty" gorm:"foreignKey:UserID"`
+	Total           float64         `json:"total"`
+	Status          string          `json:"status" gorm:"default:pending"` // pending, confirmed, shipping, completed, cancelled
+	ShippingAddress EncryptedString `json:"shipping_address"`
+	Phone           string          `json:"phone"`
+	PaymentMethod   string          `json:"payment_method" gorm:"default:cod"` // cod | momo
+	CouponCode      string          `json:"coupon_code"`
+	DiscountPercent int             `json:"discount_percent" gorm:"default:0"`
+	Items           []OrderItem     `json:"items,omitempty" gorm:"foreignKey:OrderID"`
+	CreatedAt       time.Time       `json:"created_at"`
+	UpdatedAt       time.Time       `json:"updated_at"`
 }
 
 // OrderItem — chi tiết đơn hàng (lưu snapshot giá tại thời điểm mua)

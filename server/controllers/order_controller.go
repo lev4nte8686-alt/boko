@@ -94,7 +94,7 @@ func CreateOrder(c *gin.Context) {
 			UserID:          userID.(uint),
 			Total:           finalTotal,
 			Status:          "pending",
-			ShippingAddress: input.ShippingAddress,
+			ShippingAddress: models.EncryptedString(input.ShippingAddress),
 			Phone:           input.Phone,
 			PaymentMethod:   input.PaymentMethod,
 			CouponCode:      input.CouponCode,
