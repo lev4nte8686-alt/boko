@@ -23,6 +23,7 @@ func Register(c *gin.Context) {
 		Email    string `json:"email" binding:"required,email"`
 		Password string `json:"password" binding:"required,min=6"`
 		Name     string `json:"name" binding:"required"`
+		Phone    string `json:"phone"`
 	}
 
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -47,7 +48,8 @@ func Register(c *gin.Context) {
 	user := models.User{
 		Email:    input.Email,
 		Password: string(hashedPassword),
-		Name:     input.Name,
+		Name:     models.EncryptedString(input.Name),
+		Phone:    models.EncryptedString(input.Phone),
 		Role:     "customer",
 	}
 	// BUGFIX: trước đây không check lỗi Create → frontend tưởng thành công
@@ -65,6 +67,7 @@ func Register(c *gin.Context) {
 			"id":    user.ID,
 			"email": user.Email,
 			"name":  user.Name,
+			"phone": user.Phone,
 			"role":  user.Role,
 		},
 	})
@@ -122,6 +125,7 @@ func Login(c *gin.Context) {
 			"id":    user.ID,
 			"email": user.Email,
 			"name":  user.Name,
+			"phone": user.Phone,
 			"role":  user.Role,
 		},
 	})
@@ -146,6 +150,7 @@ func GetProfile(c *gin.Context) {
 			"id":    user.ID,
 			"email": user.Email,
 			"name":  user.Name,
+			"phone": user.Phone,
 			"role":  user.Role,
 		},
 	})
@@ -157,6 +162,7 @@ func UpdateProfile(c *gin.Context) {
 
 	var input struct {
 		Name        string `json:"name"`
+		Phone       string `json:"phone"`
 		OldPassword string `json:"old_password"`
 		NewPassword string `json:"new_password" binding:"omitempty,min=6"`
 	}
@@ -171,8 +177,23 @@ func UpdateProfile(c *gin.Context) {
 
 	updates := map[string]interface{}{}
 
+	// NOTE: update qua map không đi qua Valuer nên phải mã hóa tay
 	if input.Name != "" {
-		updates["name"] = input.Name
+		enc, err := models.EncryptString(input.Name)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi mã hóa tên"})
+			return
+		}
+		updates["name"] = enc
+	}
+
+	if input.Phone != "" {
+		enc, err := models.EncryptString(input.Phone)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi mã hóa số điện thoại"})
+			return
+		}
+		updates["phone"] = enc
 	}
 
 	// Đổi mật khẩu nếu có

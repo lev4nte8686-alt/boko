@@ -3,14 +3,18 @@ package models
 import "time"
 
 // User — người dùng (customer hoặc seller)
+// Email giữ plaintext để đăng nhập (WHERE email=?) + uniqueIndex — mã hóa
+// ngẫu nhiên sẽ làm mất khả năng tìm kiếm, muốn mã hóa email phải dùng
+// blind index (HMAC) riêng. Password đã bcrypt (one-way).
 type User struct {
-	ID        uint      `json:"id" gorm:"primaryKey"`
-	Email     string    `json:"email" gorm:"uniqueIndex;not null"`
-	Password  string    `json:"-" gorm:"not null"` // không trả password trong JSON
-	Name      string    `json:"name" gorm:"not null"`
-	Role      string    `json:"role" gorm:"default:customer"` // customer | seller | admin
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        uint            `json:"id" gorm:"primaryKey"`
+	Email     string          `json:"email" gorm:"uniqueIndex;not null"`
+	Password  string          `json:"-" gorm:"not null"` // không trả password trong JSON
+	Name      EncryptedString `json:"name" gorm:"not null"`
+	Phone     EncryptedString `json:"phone"`
+	Role      string          `json:"role" gorm:"default:customer"` // customer | seller | admin
+	CreatedAt time.Time       `json:"created_at"`
+	UpdatedAt time.Time       `json:"updated_at"`
 }
 
 // Category — danh mục sách
@@ -59,7 +63,7 @@ type Order struct {
 	Total           float64         `json:"total"`
 	Status          string          `json:"status" gorm:"default:pending"` // pending, confirmed, shipping, completed, cancelled
 	ShippingAddress EncryptedString `json:"shipping_address"`
-	Phone           string          `json:"phone"`
+	Phone           EncryptedString `json:"phone"`
 	PaymentMethod   string          `json:"payment_method" gorm:"default:cod"` // cod | momo
 	CouponCode      string          `json:"coupon_code"`
 	DiscountPercent int             `json:"discount_percent" gorm:"default:0"`

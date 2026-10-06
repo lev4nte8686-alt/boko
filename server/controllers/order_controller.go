@@ -76,7 +76,7 @@ func GuestCheckout(c *gin.Context) {
 			Total:           total,
 			Status:          "pending",
 			ShippingAddress: models.EncryptedString(input.ShippingAddress),
-			Phone:           input.Phone,
+			Phone:           models.EncryptedString(input.Phone),
 			PaymentMethod:   input.PaymentMethod,
 		}
 		if err := tx.Create(&order).Error; err != nil {
@@ -186,7 +186,7 @@ func CreateOrder(c *gin.Context) {
 			Total:           finalTotal,
 			Status:          "pending",
 			ShippingAddress: models.EncryptedString(input.ShippingAddress),
-			Phone:           input.Phone,
+			Phone:           models.EncryptedString(input.Phone),
 			PaymentMethod:   input.PaymentMethod,
 			CouponCode:      input.CouponCode,
 			DiscountPercent: discountPercent,

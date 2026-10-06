@@ -112,3 +112,8 @@ func (es *EncryptedString) Scan(src interface{}) error {
 
 // GormDataType — map sang TEXT trong Postgres
 func (EncryptedString) GormDataType() string { return "text" }
+
+// EncryptString — mã hóa plaintext (AES-256-GCM, prefix v1:).
+// Dùng khi update qua map[string]interface{} (GORM không gọi Valuer cho map),
+// còn Create với struct thì GORM tự gọi Value().
+func EncryptString(plaintext string) (string, error) { return encrypt(plaintext) }
