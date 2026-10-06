@@ -50,7 +50,12 @@ func Register(c *gin.Context) {
 		Name:     input.Name,
 		Role:     "customer",
 	}
-	config.DB.Create(&user)
+	// BUGFIX: trước đây không check lỗi Create → frontend tưởng thành công
+	// dù insert thất bại (sai DB, mất kết nối Neon...), Neon trống là đúng
+	if err := config.DB.Create(&user).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể tạo tài khoản: " + err.Error()})
+		return
+	}
 
 	// Frontend muốn { success, user, token }
 	c.JSON(http.StatusCreated, gin.H{

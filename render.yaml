@@ -14,6 +14,11 @@ services:
         value: require
       - key: DB_SIMPLE
         value: "true"
+      # Cách 1 (khuyên dùng cho Neon): paste nguyên connection string vào DATABASE_URL
+      # Ví dụ: postgresql://neondb_owner:xxx@ep-xxx-pooler.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require
+      - key: DATABASE_URL
+        sync: false
+      # Cách 2 (fallback): tách từng phần — chỉ dùng khi không set DATABASE_URL
       - key: DB_HOST
         sync: false
       - key: DB_PORT
@@ -23,4 +28,8 @@ services:
       - key: DB_PASSWORD
         sync: false
       - key: DB_NAME
+        sync: false
+      # Khóa mã hóa AES-256-GCM cho orders.shipping_address (base64 32 bytes).
+      # Tạo bằng: openssl rand -base64 32 — bắt buộc set, nếu không sẽ dùng fallback key yếu
+      - key: APP_ENCRYPTION_KEY
         sync: false

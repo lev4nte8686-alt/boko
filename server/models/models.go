@@ -54,7 +54,7 @@ type Cart struct {
 // Order — đơn hàng
 type Order struct {
 	ID              uint            `json:"id" gorm:"primaryKey"`
-	UserID          uint            `json:"user_id"`
+	UserID          *uint           `json:"user_id"` // nullable: NULL = guest checkout (không đăng nhập)
 	User            *User           `json:"user,omitempty" gorm:"foreignKey:UserID"`
 	Total           float64         `json:"total"`
 	Status          string          `json:"status" gorm:"default:pending"` // pending, confirmed, shipping, completed, cancelled

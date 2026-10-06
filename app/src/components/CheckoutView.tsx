@@ -207,7 +207,15 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
             .trim();
         const res = await fetch(`${baseUrl}/api/checkout`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            // Gắn token nếu đã đăng nhập để backend lưu đơn vào đúng user
+            // (không có token = guest checkout, backend lưu user_id NULL)
+            ...(localStorage.getItem('boko_auth_token')
+              ? { Authorization: `Bearer ${localStorage.getItem('boko_auth_token')}` }
+              : {}),
+          },
           body: JSON.stringify({
             shipping_address: shippingAddress,
             phone: formData.telephone,

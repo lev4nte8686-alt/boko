@@ -3,14 +3,46 @@ package controllers
 import (
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"gorm.io/gorm"
 
 	"boko/config"
+	"boko/middleware"
 	"boko/models"
 )
+
+// optionalUserID — đọc Bearer token nếu có để gắn đơn vào user,
+// trả về nil cho guest (không token/token sai) để tránh FK violation user_id=0
+func optionalUserID(c *gin.Context) *uint {
+	authHeader := c.GetHeader("Authorization")
+	if !strings.HasPrefix(authHeader, "Bearer ") {
+		return nil
+	}
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("sai phương thức ký")
+		}
+		return middleware.JwtSecret, nil
+	})
+	if err != nil || !token.Valid {
+		return nil
+	}
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return nil
+	}
+	uidFloat, ok := claims["user_id"].(float64)
+	if !ok {
+		return nil
+	}
+	uid := uint(uidFloat)
+	return &uid
+}
 
 // ==================== ORDER ====================
 
@@ -40,6 +72,7 @@ func GuestCheckout(c *gin.Context) {
 
 	err := config.DB.Transaction(func(tx *gorm.DB) error {
 		order := models.Order{
+			UserID:          optionalUserID(c), // gắn user nếu đã đăng nhập, nil nếu guest
 			Total:           total,
 			Status:          "pending",
 			ShippingAddress: models.EncryptedString(input.ShippingAddress),
@@ -147,8 +180,9 @@ func CreateOrder(c *gin.Context) {
 		finalTotal := total * (100 - float64(discountPercent)) / 100
 
 		// 4. Tạo đơn hàng
+		uid := userID.(uint)
 		order := models.Order{
-			UserID:          userID.(uint),
+			UserID:          &uid,
 			Total:           finalTotal,
 			Status:          "pending",
 			ShippingAddress: models.EncryptedString(input.ShippingAddress),
