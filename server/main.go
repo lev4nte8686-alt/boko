@@ -1,6 +1,10 @@
 package main
 
 import (
+	"os"
+	"regexp"
+	"strings"
+
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -29,9 +33,27 @@ func main() {
 	// Tạo router Gin
 	r := gin.Default()
 
-	// CORS — cho phép React frontend (localhost:3000)
+	// CORS — đọc từ ALLOW_ORIGINS (phân cách bằng dấu phẩy),
+	// hỗ trợ wildcard như https://*.vercel.app
+	allowedOrigins := parseAllowedOrigins()
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000", "http://127.0.0.1:3000"},
+		AllowOriginFunc: func(origin string) bool {
+			if origin == "" {
+				return true // request cùng nguồn (no Origin header)
+			}
+			for _, pattern := range allowedOrigins {
+				if pattern == "*" || pattern == origin {
+					return true
+				}
+				if strings.Contains(pattern, "*") {
+					re := regexp.MustCompile(`\A` + strings.ReplaceAll(regexp.QuoteMeta(pattern), `\*`, `[^/]+`) + `\z`)
+					if re.MatchString(origin) {
+						return true
+					}
+				}
+			}
+			return false
+		},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		AllowCredentials: true,
@@ -43,8 +65,29 @@ func main() {
 	// Seed dữ liệu mẫu
 	seedData()
 
-	// Chạy server
-	r.Run(":8080")
+	// Chạy server — tôn trọng env PORT (Render/Vercel inject PORT), fallback 8080
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	r.Run(":" + port)
+}
+
+// parseAllowedOrigins — biến ALLOW_ORIGINS (dấu phẩy) thành danh sách origin.
+// Mặc định cho phép frontend dev trên localhost.
+func parseAllowedOrigins() []string {
+	raw := os.Getenv("ALLOW_ORIGINS")
+	if strings.TrimSpace(raw) == "" {
+		raw = "http://localhost:3000,http://127.0.0.1:3000"
+	}
+	var out []string
+	for _, s := range strings.Split(raw, ",") {
+		s = strings.TrimSpace(s)
+		if s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // seedData — tạo dữ liệu mẫu nếu database trống

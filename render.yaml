@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: boko-api
+    runtime: docker
+    rootDir: server
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: GIN_MODE
+        value: release
+      - key: ALLOW_ORIGINS
+        value: "https://*.vercel.app"
+      - key: DB_SSLMODE
+        value: require
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        value: "5432"
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_NAME
+        sync: false

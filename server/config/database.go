@@ -18,10 +18,11 @@ func ConnectDatabase() {
 	user := getEnv("DB_USER", "postgres")
 	password := getEnv("DB_PASSWORD", "123456")
 	dbname := getEnv("DB_NAME", "boko_db")
+	sslmode := getEnv("DB_SSLMODE", "disable") // Neon/managed DB yêu cầu "require"
 
 	dsn := fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		host, port, user, password, dbname,
+		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+		host, port, user, password, dbname, sslmode,
 	)
 
 	var err error
