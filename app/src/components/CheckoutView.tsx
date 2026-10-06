@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { CartItem, CheckoutFormState, Currency, Order, User, ShippingAddress } from '../types';
+import { getBackendBaseUrl } from '../api/serverAuth';
 
 interface CheckoutViewProps {
   cart: CartItem[];
@@ -159,7 +160,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
     setTimeout(() => setCopiedBank(false), 2000);
   };
 
-  const handleSubmitOrder = (e: React.FormEvent) => {
+  const handleSubmitOrder = async (e: React.FormEvent) => {
     e.preventDefault();
 
     // Basic validation
@@ -195,6 +196,37 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
     }
 
     setFormErrors([]);
+
+    // Gửi đơn đặt hàng lên backend (nếu có) — backend sẽ mã hóa ShippingAddress
+    const baseUrl = getBackendBaseUrl();
+    if (baseUrl) {
+      try {
+        const shippingAddress =
+          `${formData.streetAddress || formData.address}, ${formData.ward || ''}, ${formData.province || formData.city || ''}`
+            .replace(/(^,\s*|,\s*$)/g, '')
+            .trim();
+        const res = await fetch(`${baseUrl}/api/checkout`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({
+            shipping_address: shippingAddress,
+            phone: formData.telephone,
+            payment_method: formData.paymentMethod === 'ewallet' ? 'momo' : formData.paymentMethod === 'bank' ? 'cod' : formData.paymentMethod,
+            items: displayItems.map((it) => ({
+              title: it.book.title,
+              price: it.book.priceVND,
+              quantity: it.quantity
+            }))
+          })
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          console.warn('Checkout API error:', data?.error || res.status);
+        }
+      } catch (err) {
+        console.warn('Checkout API call failed:', err);
+      }
+    }
 
     const newOrder: Order = {
       id: `BST-${Math.floor(100000 + Math.random() * 900000)}`,

@@ -14,6 +14,63 @@ import (
 
 // ==================== ORDER ====================
 
+// GuestCheckout — tạo đơn ngay từ danh sách sản phẩm frontend gửi lên (không cần giỏ hàng DB)
+func GuestCheckout(c *gin.Context) {
+	var input struct {
+		ShippingAddress string `json:"shipping_address" binding:"required"`
+		Phone           string `json:"phone" binding:"required"`
+		PaymentMethod   string `json:"payment_method"`
+		Items           []struct {
+			Title    string  `json:"title" binding:"required"`
+			Price    float64 `json:"price" binding:"required"`
+			Quantity int     `json:"quantity" binding:"required"`
+		} `json:"items" binding:"required,dive"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ: " + err.Error()})
+		return
+	}
+	if input.PaymentMethod == "" {
+		input.PaymentMethod = "cod"
+	}
+	var total float64
+	for _, it := range input.Items {
+		total += it.Price * float64(it.Quantity)
+	}
+
+	err := config.DB.Transaction(func(tx *gorm.DB) error {
+		order := models.Order{
+			Total:           total,
+			Status:          "pending",
+			ShippingAddress: models.EncryptedString(input.ShippingAddress),
+			Phone:           input.Phone,
+			PaymentMethod:   input.PaymentMethod,
+		}
+		if err := tx.Create(&order).Error; err != nil {
+			return err
+		}
+		for _, it := range input.Items {
+			item := models.OrderItem{
+				OrderID:  order.ID,
+				Title:    it.Title,
+				Price:    it.Price,
+				Quantity: it.Quantity,
+			}
+			if err := tx.Create(&item).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	var order models.Order
+	config.DB.Preload("Items").Order("id desc").First(&order)
+	c.JSON(http.StatusCreated, gin.H{"message": "Đặt hàng thành công!", "order_id": order.ID, "total": order.Total, "status": order.Status})
+}
+
 // CreateOrder — tạo đơn hàng từ giỏ hàng (dùng transaction)
 func CreateOrder(c *gin.Context) {
 	userID, _ := c.Get("user_id")

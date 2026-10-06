@@ -34,6 +34,9 @@ func SetupRoutes(r *gin.Engine) {
 	// Reviews (public)
 	r.GET("/api/books/:id/reviews", controllers.GetBookReviews)
 
+	// Guest checkout — frontend gửi trực tiếp danh sách sản phẩm + địa chỉ
+	r.POST("/api/checkout", controllers.GuestCheckout)
+
 	// ==================== PROTECTED ROUTES ====================
 
 	auth := r.Group("/api")
