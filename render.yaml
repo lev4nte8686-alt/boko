@@ -12,6 +12,8 @@ services:
         value: "https://*.vercel.app"
       - key: DB_SSLMODE
         value: require
+      - key: DB_SIMPLE
+        value: "true"
       - key: DB_HOST
         sync: false
       - key: DB_PORT

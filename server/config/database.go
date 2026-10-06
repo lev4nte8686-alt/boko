@@ -25,10 +25,23 @@ func ConnectDatabase() {
 		host, port, user, password, dbname, sslmode,
 	)
 
+	cfg := postgres.New(postgres.Config{
+		DSN: dsn,
+		// Neon pooler (pgbouncer) không hỗ trợ prepared statement → dùng simple protocol
+		PreferSimpleProtocol: getEnv("DB_SIMPLE", "false") == "true",
+	})
+
 	var err error
-	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	DB, err = gorm.Open(cfg, &gorm.Config{})
 	if err != nil {
 		panic("Không thể kết nối database: " + err.Error())
+	}
+
+	// Giới hạn pool kết nối (Neon free tier giới hạn kết nối đồng thời)
+	sqlDB, err := DB.DB()
+	if err == nil {
+		sqlDB.SetMaxOpenConns(10)
+		sqlDB.SetMaxIdleConns(5)
 	}
 }
 
