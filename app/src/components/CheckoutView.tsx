@@ -55,6 +55,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
   const savedMomo = (user?.paymentMethods || []).filter((m) => m.type === 'momo');
   const savedZalo = (user?.paymentMethods || []).filter((m) => m.type === 'zalopay');
   const savedBanks = (user?.paymentMethods || []).filter((m) => m.type === 'bank');
+  const savedPaypal = (user?.paymentMethods || []).filter((m) => m.type === 'paypal');
 
   // Handle open settings tab
   const handleOpenSettingsTab = (tab: 'profile' | 'address' | 'payments') => {
@@ -193,6 +194,12 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
         handleOpenSettingsTab('payments');
         return;
       }
+    }
+
+    if (formData.paymentMethod === 'paypal' && savedPaypal.length === 0) {
+      setFormErrors(['Bạn chưa liên kết tài khoản PayPal trong Cài đặt. Vui lòng liên kết trước khi tiếp tục.']);
+      handleOpenSettingsTab('payments');
+      return;
     }
 
     setFormErrors([]);
@@ -723,6 +730,96 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                           </button>
                         </div>
                       )
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* PayPal Option */}
+              <div className="p-4 bg-white rounded-xl border border-slate-200 space-y-4">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="radio"
+                    id="payment-paypal"
+                    name="paymentMethod"
+                    checked={formData.paymentMethod === 'paypal'}
+                    onChange={() => {
+                      setFormData((p) => ({ ...p, paymentMethod: 'paypal' }));
+                      if (savedPaypal.length === 0) {
+                        handleOpenSettingsTab('payments');
+                      }
+                    }}
+                    className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer"
+                  />
+                  <label htmlFor="payment-paypal" className="font-body text-base font-semibold text-slate-900 cursor-pointer">
+                    PayPal (thanh toán quốc tế)
+                  </label>
+                  <div className="flex gap-2 ml-auto">
+                    <i className="fa-brands fa-paypal text-[#003087] text-xl"></i>
+                  </div>
+                </div>
+
+                {formData.paymentMethod === 'paypal' && (
+                  <div className="pt-2 border-t border-slate-100 animate-fadeIn space-y-3">
+                    {savedPaypal.length > 0 ? (
+                      <div className="space-y-2">
+                        <p className="text-xs font-bold text-slate-700">
+                          Tài khoản PayPal đã liên kết:
+                        </p>
+                        <div className="space-y-2">
+                          {savedPaypal.map((method) => (
+                            <div
+                              key={method.id}
+                              className={`p-3 rounded-xl border flex items-center justify-between gap-3 ${
+                                method.isDefault || selectedSavedPaymentId === method.id
+                                  ? 'bg-blue-50/60 border-blue-500'
+                                  : 'bg-white border-slate-200'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <i className="fa-brands fa-paypal text-[#003087] text-lg"></i>
+                                <div>
+                                  <p className="text-xs font-bold text-slate-900">{method.label}</p>
+                                  <p className="text-[11px] text-slate-500">Chủ tài khoản: {method.accountHolder}</p>
+                                </div>
+                              </div>
+                              {method.isDefault && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-600 text-white">
+                                  Mặc định
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenSettingsTab('payments')}
+                          className="text-xs font-semibold text-blue-600 hover:underline flex items-center gap-1.5 mt-1 cursor-pointer"
+                        >
+                          <i className="fa-solid fa-gear text-xs"></i>
+                          <span>Quản lý tài khoản PayPal trong Cài đặt</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 space-y-3 text-blue-950">
+                        <div className="flex items-start gap-2">
+                          <i className="fa-solid fa-circle-info text-[#003087] text-base shrink-0 mt-0.5"></i>
+                          <div>
+                            <p className="text-xs font-bold">Chưa liên kết tài khoản PayPal</p>
+                            <p className="text-xs mt-0.5">
+                              Liên kết email PayPal trong Cài đặt để thanh toán quốc tế nhanh chóng.
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenSettingsTab('payments')}
+                          className="w-full sm:w-auto px-4 py-2 rounded-lg bg-[#003087] hover:bg-[#00246b] text-white font-bold text-xs transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <i className="fa-brands fa-paypal text-xs"></i>
+                          <span>Mở Cài Đặt Để Liên Kết PayPal</span>
+                        </button>
+                      </div>
                     )}
                   </div>
                 )}

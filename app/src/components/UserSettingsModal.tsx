@@ -57,7 +57,7 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
   // Tab 3: Payment Methods
   const [paymentMethods, setPaymentMethods] = useState<SavedPaymentMethod[]>([]);
   const [showAddPaymentForm, setShowAddPaymentForm] = useState(false);
-  const [newPaymentType, setNewPaymentType] = useState<'card' | 'momo' | 'zalopay' | 'bank'>('card');
+  const [newPaymentType, setNewPaymentType] = useState<'card' | 'momo' | 'zalopay' | 'bank' | 'paypal'>('card');
   const [cardHolder, setCardHolder] = useState('');
   const [cardNumber, setCardNumber] = useState('');
   const [cardExpiry, setCardExpiry] = useState('');
@@ -206,6 +206,20 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
         accountNumber: walletPhone.trim(),
         accountHolder: (walletName.trim() || user.name).toUpperCase(),
         providerName: 'ZaloPay',
+        isDefault: isDefaultMethod || paymentMethods.length === 0
+      };
+    } else if (newPaymentType === 'paypal') {
+      if (!walletPhone.trim() || !walletPhone.includes('@')) {
+        showToast('Vui lòng nhập địa chỉ email PayPal hợp lệ.');
+        return;
+      }
+      newMethod = {
+        id: `pm-paypal-${Date.now()}`,
+        type: 'paypal',
+        label: `PayPal (${walletPhone.trim()})`,
+        accountNumber: walletPhone.trim(),
+        accountHolder: (walletName.trim() || user.name).toUpperCase(),
+        providerName: 'PayPal',
         isDefault: isDefaultMethod || paymentMethods.length === 0
       };
     } else {
@@ -664,7 +678,7 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
                     <label className="block text-xs font-bold text-slate-700 mb-2">
                       Chọn Loại Phương Thức Thanh Toán:
                     </label>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                       <button
                         type="button"
                         onClick={() => setNewPaymentType('card')}
@@ -715,6 +729,19 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
                       >
                         <i className="fa-solid fa-building-columns text-lg"></i>
                         <span>Tài Khoản NH</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setNewPaymentType('paypal')}
+                        className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1.5 transition-all text-xs font-bold cursor-pointer ${
+                          newPaymentType === 'paypal'
+                            ? 'bg-[#003087] text-white border-[#003087] shadow-sm'
+                            : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
+                        <i className="fa-brands fa-paypal text-lg"></i>
+                        <span>PayPal</span>
                       </button>
                     </div>
                   </div>
@@ -790,6 +817,37 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
                       <div>
                         <label className="block text-xs font-bold text-slate-700 mb-1">
                           Họ và Tên Chủ Ví
+                        </label>
+                        <input
+                          type="text"
+                          value={walletName}
+                          onChange={(e) => setWalletName(e.target.value)}
+                          placeholder={user.name}
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-body text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600/30"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {newPaymentType === 'paypal' && (
+                    <div className="space-y-3 bg-white p-4 rounded-xl border border-slate-200">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Địa chỉ email PayPal <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="email"
+                          required
+                          value={walletPhone}
+                          onChange={(e) => setWalletPhone(e.target.value)}
+                          placeholder="email@example.com"
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-body text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600/30"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Họ và Tên Chủ Tài Khoản
                         </label>
                         <input
                           type="text"
@@ -931,14 +989,22 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
                               ? 'bg-blue-500'
                               : method.type === 'bank'
                               ? 'bg-emerald-700'
+                              : method.type === 'paypal'
+                              ? 'bg-[#003087]'
                               : 'bg-slate-900'
                           }`}
                         >
-                          <i className={`fa-solid ${
+                          <i className={`${
+                            method.type === 'paypal'
+                              ? 'fa-brands fa-paypal'
+                              : 'fa-solid'
+                          } ${
                             method.type === 'card'
                               ? 'fa-credit-card'
                               : method.type === 'bank'
                               ? 'fa-building-columns'
+                              : method.type === 'paypal'
+                              ? ''
                               : 'fa-wallet'
                           } text-xl`}></i>
                         </div>
