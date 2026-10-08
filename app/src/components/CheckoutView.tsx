@@ -842,7 +842,9 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                         </p>
                         {/* Ẩn iframe khi modal mở (giữ khung để không nhảy layout) */}
                         <div className={isOverlayOpen ? 'invisible' : ''}>
-                        <PayPalScriptProvider options={{ clientId: paypalClientId, currency: 'USD' }}>
+                        <PayPalScriptProvider
+                          options={{ clientId: paypalClientId, currency: 'USD', disableFunding: 'card' }}
+                        >
                           <PayPalButtons
                             style={{ layout: 'vertical', shape: 'rect', label: 'paypal' }}
                             createOrder={(_data, actions) =>
