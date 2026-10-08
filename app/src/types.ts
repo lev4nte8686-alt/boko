@@ -65,7 +65,7 @@ export interface CheckoutFormState {
   province?: string;
   ward?: string;
   streetAddress?: string;
-  paymentMethod: 'card' | 'ewallet' | 'bank' | 'cod' | 'paypal';
+  paymentMethod: 'card' | 'ewallet' | 'bank' | 'cod' | 'paypal' | 'atm';
   cardNumber: string;
   cardExpiry: string;
   cardCvv: string;
@@ -82,7 +82,7 @@ export interface ShippingAddress {
 
 export interface SavedPaymentMethod {
   id: string;
-  type: 'card' | 'zalopay' | 'bank' | 'paypal';
+  type: 'card' | 'zalopay' | 'bank' | 'paypal' | 'atm';
   label: string; // e.g. "Thẻ Visa •••• 8892" or "Ví ZaloPay - 0912 345 678"
   accountNumber: string;
   accountHolder: string;

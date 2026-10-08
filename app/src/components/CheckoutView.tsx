@@ -60,6 +60,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
   const [savedSuccessMsg, setSavedSuccessMsg] = useState<string | null>(null);
 
   const savedCards = (user?.paymentMethods || []).filter((m) => m.type === 'card');
+  const savedAtm = (user?.paymentMethods || []).filter((m) => m.type === 'atm');
   const savedZalo = (user?.paymentMethods || []).filter((m) => m.type === 'zalopay');
   const savedBanks = (user?.paymentMethods || []).filter((m) => m.type === 'bank');
   const savedPaypal = (user?.paymentMethods || []).filter((m) => m.type === 'paypal');
@@ -243,6 +244,12 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
     // Check non-COD payment integrations
     if (formData.paymentMethod === 'card' && savedCards.length === 0) {
       setFormErrors(['Bạn chưa tích hợp Thẻ tín dụng/ghi nợ trong Cài đặt. Vui lòng thêm thẻ thanh toán trước khi tiếp tục.']);
+      handleOpenSettingsTab('payments');
+      return;
+    }
+
+    if (formData.paymentMethod === 'atm' && savedAtm.length === 0) {
+      setFormErrors(['Bạn chưa liên kết Thẻ ATM nội địa trong Cài đặt. Vui lòng liên kết thẻ trước khi tiếp tục.']);
       handleOpenSettingsTab('payments');
       return;
     }
@@ -720,6 +727,98 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                         >
                           <i className="fa-solid fa-credit-card text-xs"></i>
                           <span>Mở Cài Đặt Để Tích Hợp Thẻ Ngay</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* ATM Nội Địa Option (mock — liên kết trong Cài đặt, không trừ tiền thật) */}
+              <div className="p-4 bg-white rounded-xl border border-slate-200 space-y-4">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="radio"
+                    id="payment-atm"
+                    name="paymentMethod"
+                    checked={formData.paymentMethod === 'atm'}
+                    onChange={() => {
+                      setFormData((p) => ({ ...p, paymentMethod: 'atm' }));
+                      if (savedAtm.length === 0) {
+                        handleOpenSettingsTab('payments');
+                      }
+                    }}
+                    className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer"
+                  />
+                  <label htmlFor="payment-atm" className="font-body text-base font-semibold text-slate-900 cursor-pointer">
+                    Thẻ ATM Nội Địa (Napas)
+                  </label>
+                  <div className="flex gap-2 ml-auto">
+                    <i className="fa-solid fa-building-columns text-slate-400 text-base"></i>
+                  </div>
+                </div>
+
+                {formData.paymentMethod === 'atm' && (
+                  <div className="pt-2 border-t border-slate-100 animate-fadeIn space-y-3">
+                    {savedAtm.length > 0 ? (
+                      <div className="space-y-2">
+                        <p className="text-xs font-bold text-slate-700">
+                          Thẻ ATM đã liên kết:
+                        </p>
+                        <div className="space-y-2">
+                          {savedAtm.map((method) => (
+                            <div
+                              key={method.id}
+                              className={`p-3 rounded-xl border flex items-center justify-between gap-3 ${
+                                method.isDefault || selectedSavedPaymentId === method.id
+                                  ? 'bg-teal-50/60 border-teal-600'
+                                  : 'bg-white border-slate-200'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <i className="fa-solid fa-building-columns text-teal-700 text-base"></i>
+                                <div>
+                                  <p className="text-xs font-bold text-slate-900">{method.label}</p>
+                                  <p className="text-[11px] text-slate-500">Chủ thẻ: {method.accountHolder}</p>
+                                </div>
+                              </div>
+                              {method.isDefault && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-700 text-white">
+                                  Mặc định
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenSettingsTab('payments')}
+                          className="text-xs font-semibold text-blue-600 hover:underline flex items-center gap-1.5 mt-1 cursor-pointer"
+                        >
+                          <i className="fa-solid fa-gear text-xs"></i>
+                          <span>Quản lý thẻ ATM trong Cài đặt</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="p-4 rounded-xl bg-amber-50 border border-amber-200/90 text-amber-900 space-y-3">
+                        <div className="flex items-start gap-2.5">
+                          <i className="fa-solid fa-triangle-exclamation text-amber-700 text-lg shrink-0 mt-0.5"></i>
+                          <div>
+                            <p className="text-xs font-bold text-amber-950">
+                              Chưa có thẻ ATM nào được liên kết
+                            </p>
+                            <p className="text-xs text-amber-800/90 mt-0.5">
+                              Vui lòng liên kết thẻ ATM nội địa của bạn tại trang Cài đặt trước khi thanh toán.
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenSettingsTab('payments')}
+                          className="w-full sm:w-auto px-4 py-2 rounded-lg bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <i className="fa-solid fa-building-columns text-xs"></i>
+                          <span>Mở Cài Đặt Để Liên Kết Thẻ ATM</span>
                         </button>
                       </div>
                     )}
