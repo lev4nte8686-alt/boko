@@ -322,6 +322,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
           paypal_order_id: paypalOrderId,
           shipping_address: buildShippingAddress(),
           phone: formData.telephone,
+          total_vnd: totalVND,
           items: buildItemsPayload()
         })
       });

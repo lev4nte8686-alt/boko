@@ -127,6 +127,7 @@ func PaypalCapture(c *gin.Context) {
 		PaypalOrderID   string `json:"paypal_order_id" binding:"required"`
 		ShippingAddress string `json:"shipping_address" binding:"required"`
 		Phone           string `json:"phone" binding:"required"`
+		TotalVND        float64 `json:"total_vnd" binding:"required"`
 		Items           []struct {
 			Title    string  `json:"title" binding:"required"`
 			Price    float64 `json:"price" binding:"required"` // VND
@@ -137,13 +138,14 @@ func PaypalCapture(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ: " + err.Error()})
 		return
 	}
-
-	// Tổng VND phía server (không tin total từ client)
-	var totalVND float64
-	for _, it := range input.Items {
-		totalVND += it.Price * float64(it.Quantity)
+	if input.TotalVND <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Tổng tiền không hợp lệ"})
+		return
 	}
-	expectedUSD := math.Round(totalVND/vndPerUSD*100) / 100
+
+	// Đối chiếu số tiền PayPal thực thu với tổng đơn (gồm VAT/ship/giảm giá).
+	// Không tự cộng items vì items chỉ là tạm tính chưa gồm VAT/ship/giảm giá.
+	expectedUSD := math.Round(input.TotalVND/vndPerUSD*100) / 100
 
 	token, err := paypalAccessToken()
 	if err != nil {
@@ -169,7 +171,7 @@ func PaypalCapture(c *gin.Context) {
 	err = config.DB.Transaction(func(tx *gorm.DB) error {
 		order := models.Order{
 			UserID:          optionalUserID(c),
-			Total:           totalVND,
+			Total:           input.TotalVND,
 			Status:          "confirmed", // đã thu tiền
 			ShippingAddress: models.EncryptedString(input.ShippingAddress),
 			Phone:           models.EncryptedString(input.Phone),
@@ -193,7 +195,7 @@ func PaypalCapture(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "Thanh toán PayPal thành công!",
-		"order_id": orderID, "total": totalVND, "status": "confirmed",
+		"order_id": orderID, "total": input.TotalVND, "status": "confirmed",
 		"paypal_capture_id": cap.Capture,
 	})
 }
