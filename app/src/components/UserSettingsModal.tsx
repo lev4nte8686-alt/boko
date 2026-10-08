@@ -71,6 +71,9 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
 
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
+  // Thu PayPal thật (có Client ID) thì không cần liên kết trước → ẩn nút PayPal ở đây
+  const paypalLive = ((import.meta.env.VITE_PAYPAL_CLIENT_ID as string) || '').trim().length > 0;
+
   // Sync state with user and initial tab
   useEffect(() => {
     if (isOpen) {
@@ -678,7 +681,7 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
                     <label className="block text-xs font-bold text-slate-700 mb-2">
                       Chọn Loại Phương Thức Thanh Toán:
                     </label>
-                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                    <div className={`grid grid-cols-2 gap-2 ${paypalLive ? 'sm:grid-cols-4' : 'sm:grid-cols-5'}`}>
                       <button
                         type="button"
                         onClick={() => setNewPaymentType('card')}
@@ -731,6 +734,7 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
                         <span>Tài Khoản NH</span>
                       </button>
 
+                      {!paypalLive && (
                       <button
                         type="button"
                         onClick={() => setNewPaymentType('paypal')}
@@ -743,6 +747,7 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
                         <i className="fa-brands fa-paypal text-lg"></i>
                         <span>PayPal</span>
                       </button>
+                      )}
                     </div>
                   </div>
 

@@ -817,7 +817,8 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                     checked={formData.paymentMethod === 'paypal'}
                     onChange={() => {
                       setFormData((p) => ({ ...p, paymentMethod: 'paypal' }));
-                      if (savedPaypal.length === 0) {
+                      // Chế độ thu thật: trả luôn bằng nút PayPal, không cần liên kết trước
+                      if (!paypalClientId && savedPaypal.length === 0) {
                         handleOpenSettingsTab('payments');
                       }
                     }}
@@ -871,7 +872,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                         </div>
                       </div>
                     ) : null}
-                    {savedPaypal.length > 0 ? (
+                    {savedPaypal.length > 0 && !paypalClientId ? (
                       <div className="space-y-2">
                         <p className="text-xs font-bold text-slate-700">
                           Tài khoản PayPal đã liên kết:
