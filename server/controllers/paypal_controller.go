@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"net/http"
 	"net/url"
@@ -170,6 +171,7 @@ func PaypalCreateOrder(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"id": out.ID, "status": out.Status, "amount_usd": amount})
+	log.Printf("paypal create ok: order=%s amount=%s USD", out.ID, amount)
 }
 // Frontend gửi paypal_order_id (đã approve) + thông tin đơn. Backend capture,
 // đối chiếu số tiền USD ~ totalVND/25000 rồi mới lưu đơn (status=confirmed = đã thanh toán).
@@ -205,6 +207,7 @@ func PaypalCapture(c *gin.Context) {
 	}
 	cap, err := paypalCapture(input.PaypalOrderID, token)
 	if err != nil {
+		log.Printf("paypal capture fail: order=%s err=%v", input.PaypalOrderID, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -249,4 +252,5 @@ func PaypalCapture(c *gin.Context) {
 		"order_id": orderID, "total": input.TotalVND, "status": "confirmed",
 		"paypal_capture_id": cap.Capture,
 	})
+	log.Printf("paypal order saved: id=%d capture=%s total_vnd=%.0f", orderID, cap.Capture, input.TotalVND)
 }

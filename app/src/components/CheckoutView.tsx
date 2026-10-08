@@ -178,6 +178,8 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
   });
 
   // Kiểm tra form trước khi mở popup PayPal
+  const [paypalInlineError, setPaypalInlineError] = useState<string | null>(null);
+
   const validateForPayPal = (): boolean => {
     const errors: string[] = [];
     if (!formData.email.trim()) errors.push('Vui lòng nhập Email');
@@ -185,6 +187,13 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
     if (!formData.telephone.trim()) errors.push('Vui lòng nhập Số điện thoại');
     if (!(formData.streetAddress || formData.address || '').trim()) errors.push('Vui lòng nhập Địa chỉ giao hàng');
     setFormErrors(errors);
+    // Hiện lỗi ngay tại nút PayPal để khỏi phải kéo lên đầu form tìm
+    setPaypalInlineError(errors.length > 0 ? ('Thiếu: ' + errors.join(' • ')) : null);
+    if (errors.length > 0) {
+      setTimeout(() => {
+        document.getElementById('checkout-errors')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 50);
+    }
     return errors.length === 0;
   };
 
@@ -353,6 +362,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
         return;
       }
       setFormErrors([]);
+      setPaypalInlineError(null);
       onOrderPlaced(makeLocalOrder(`PP-${data.order_id}`));
     } catch {
       setFormErrors(['Không kết nối được máy chủ xác thực PayPal.']);
@@ -390,7 +400,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
         {/* Left Column: Input Forms */}
         <section className="lg:col-span-7 space-y-10">
           {formErrors.length > 0 && (
-            <div className="p-4 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl space-y-1">
+            <div id="checkout-errors" className="p-4 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl space-y-1">
               <p className="font-bold">Vui lòng kiểm tra lại thông tin:</p>
               <ul className="list-disc list-inside">
                 {formErrors.map((err, idx) => (
@@ -889,6 +899,15 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                             <span>Đang xác thực thanh toán với PayPal, vui lòng đợi...</span>
                           </p>
                         )}
+                        {paypalInlineError && (
+                          <p className="text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-lg p-2.5">
+                            {paypalInlineError}
+                          </p>
+                        )}
+                        <p className="text-[11px] text-slate-400 font-body">
+                          Popup PayPal tự đóng ngay? Kiểm tra icon chặn popup trên thanh địa chỉ
+                          và chọn “Luôn cho phép popup” cho web này rồi thử lại.
+                        </p>
                         </div>
                       </div>
                     ) : null}
