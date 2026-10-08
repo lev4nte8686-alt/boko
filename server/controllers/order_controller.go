@@ -235,10 +235,12 @@ func CreateOrder(c *gin.Context) {
 	config.DB.Preload("Items").Where("user_id = ?", userID).Order("id desc").First(&order)
 
 	c.JSON(http.StatusCreated, gin.H{
-		"message":  "Đặt hàng thành công!",
-		"order_id": order.ID,
-		"total":    order.Total,
-		"status":   order.Status,
+		"message":        "Đặt hàng thành công!",
+		"order_id":       order.ID,
+		"total":          order.Total,
+		"status":         order.Status,
+		"payment_method": order.PaymentMethod,
+		"payment_status": order.PaymentStatus,
 	})
 }
 

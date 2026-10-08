@@ -55,7 +55,7 @@ type Cart struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// Order — đơn hàng
+// Order — đơn hàng (gộp: mã hóa của fork + cột đối soát MoMo của nhóm)
 type Order struct {
 	ID              uint            `json:"id" gorm:"primaryKey"`
 	UserID          *uint           `json:"user_id"` // nullable: NULL = guest checkout (không đăng nhập)
@@ -64,7 +64,11 @@ type Order struct {
 	Status          string          `json:"status" gorm:"default:pending"` // pending, confirmed, shipping, completed, cancelled
 	ShippingAddress EncryptedString `json:"shipping_address"`
 	Phone           EncryptedString `json:"phone"`
-	PaymentMethod   string          `json:"payment_method" gorm:"default:cod"` // cod | paypal | card | bank | zalopay
+	PaymentMethod   string          `json:"payment_method" gorm:"default:cod"` // cod | paypal | card | bank | zalopay | momo | vnpay...
+	PaymentStatus   string          `json:"payment_status" gorm:"default:unpaid"` // unpaid | paid | failed (nhóm)
+	PaymentTransID  string          `json:"payment_trans_id"`
+	PaymentOrderID  string          `json:"payment_order_id"`
+	PaymentRequestID string         `json:"payment_request_id"`
 	PaymentRef      string          `json:"payment_ref" gorm:"index"` // mã giao dịch cổng thanh toán (để đối soát)
 	CouponCode      string          `json:"coupon_code"`
 	DiscountPercent int             `json:"discount_percent" gorm:"default:0"`

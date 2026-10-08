@@ -519,6 +519,145 @@
 					}
 				}
 			]
+		},
+		{
+			"name": "MoMo Payment",
+			"item": [
+				{
+					"name": "1. Tạo thanh toán MoMo (Create Payment)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    var data = pm.response.json();",
+									"    pm.collectionVariables.set('MOMO_PAY_URL', data.pay_url);",
+									"    pm.collectionVariables.set('MOMO_ORDER_ID', data.momo_order_id);",
+									"    console.log('✅ Link thanh toán MoMo:', data.pay_url);",
+									"    console.log('👉 Mở link trên trình duyệt để thanh toán thử!');",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{TOKEN}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"order_id\": 1\n}"
+						},
+						"url": {
+							"raw": "{{BASE_URL}}/api/payment/momo/create",
+							"host": ["{{BASE_URL}}"],
+							"path": ["api", "payment", "momo", "create"]
+						}
+					}
+				},
+				{
+					"name": "2. Tra cứu trạng thái đơn hàng (Get Status & Sync)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{TOKEN}}" }
+						],
+						"url": {
+							"raw": "{{BASE_URL}}/api/payment/momo/status/1",
+							"host": ["{{BASE_URL}}"],
+							"path": ["api", "payment", "momo", "status", "1"]
+						}
+					}
+				},
+				{
+					"name": "3. Giả lập MoMo IPN (Mock IPN Webhook)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    console.log('✅ Đã giả lập IPN thành công! Hãy kiểm tra lại trạng thái đơn hàng.');",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"url": {
+							"raw": "{{BASE_URL}}/api/payment/momo/mock-ipn/1",
+							"host": ["{{BASE_URL}}"],
+							"path": ["api", "payment", "momo", "mock-ipn", "1"]
+						}
+					}
+				},
+				{
+					"name": "4. Webhook IPN Thực Tế (MoMo Gateway Bắn Về)",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"const accessKey = 'klm05TvNBzhg7h7j';",
+									"const secretKey = 'at67qH6mk8w5Y1nAyMoYKMWACiEi2bsa';",
+									"const partnerCode = 'MOMOBKUN20180529';",
+									"const orderId = pm.collectionVariables.get('MOMO_ORDER_ID') || 'BOKO_1_1710000000000';",
+									"const requestId = 'REQ_' + Date.now();",
+									"const amount = 50000;",
+									"const orderInfo = 'Thanh toan don hang Boko';",
+									"const orderType = 'momo_wallet';",
+									"const transId = 9998887776;",
+									"const resultCode = 0;",
+									"const message = 'Thành công.';",
+									"const payType = 'napas';",
+									"const responseTime = Date.now();",
+									"const extraData = '';",
+									"const raw = `accessKey=${accessKey}&amount=${amount}&extraData=${extraData}&message=${message}&orderId=${orderId}&orderInfo=${orderInfo}&orderType=${orderType}&partnerCode=${partnerCode}&payType=${payType}&requestId=${requestId}&responseTime=${responseTime}&resultCode=${resultCode}&transId=${transId}`;",
+									"const signature = CryptoJS.HmacSHA256(raw, secretKey).toString(CryptoJS.enc.Hex);",
+									"pm.variables.set('ipn_partnerCode', partnerCode);",
+									"pm.variables.set('ipn_orderId', orderId);",
+									"pm.variables.set('ipn_requestId', requestId);",
+									"pm.variables.set('ipn_amount', amount);",
+									"pm.variables.set('ipn_orderInfo', orderInfo);",
+									"pm.variables.set('ipn_orderType', orderType);",
+									"pm.variables.set('ipn_transId', transId);",
+									"pm.variables.set('ipn_resultCode', resultCode);",
+									"pm.variables.set('ipn_message', message);",
+									"pm.variables.set('ipn_payType', payType);",
+									"pm.variables.set('ipn_responseTime', responseTime);",
+									"pm.variables.set('ipn_extraData', extraData);",
+									"pm.variables.set('ipn_signature', signature);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"partnerCode\": \"{{ipn_partnerCode}}\",\n    \"orderId\": \"{{ipn_orderId}}\",\n    \"requestId\": \"{{ipn_requestId}}\",\n    \"amount\": {{ipn_amount}},\n    \"orderInfo\": \"{{ipn_orderInfo}}\",\n    \"orderType\": \"{{ipn_orderType}}\",\n    \"transId\": {{ipn_transId}},\n    \"resultCode\": {{ipn_resultCode}},\n    \"message\": \"{{ipn_message}}\",\n    \"payType\": \"{{ipn_payType}}\",\n    \"responseTime\": {{ipn_responseTime}},\n    \"extraData\": \"{{ipn_extraData}}\",\n    \"signature\": \"{{ipn_signature}}\"\n}"
+						},
+						"url": {
+							"raw": "{{BASE_URL}}/api/payment/momo/ipn",
+							"host": ["{{BASE_URL}}"],
+							"path": ["api", "payment", "momo", "ipn"]
+						}
+					}
+				}
+			]
 		}
 	],
 	"variable": [
@@ -528,6 +667,14 @@
 		},
 		{
 			"key": "TOKEN",
+			"value": ""
+		},
+		{
+			"key": "MOMO_PAY_URL",
+			"value": ""
+		},
+		{
+			"key": "MOMO_ORDER_ID",
 			"value": ""
 		}
 	]
