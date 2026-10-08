@@ -1015,13 +1015,20 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
               <span>Return to Cart</span>
             </button>
 
-            <button
-              type="button"
-              onClick={handleSubmitOrder}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-label-caps text-xs py-4 px-12 rounded-lg w-full sm:w-auto uppercase tracking-widest font-bold shadow-md shadow-blue-200 transition-all cursor-pointer"
-            >
-              Continue
-            </button>
+            {formData.paymentMethod === 'paypal' && paypalClientId ? (
+              <p className="text-xs text-slate-500 font-body text-center sm:text-right max-w-xs">
+                Hoàn tất thanh toán bằng <strong className="text-slate-800">nút PayPal ở trên</strong> —
+                đơn tự lưu sau khi PayPal xác nhận tiền về.
+              </p>
+            ) : (
+              <button
+                type="button"
+                onClick={handleSubmitOrder}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-label-caps text-xs py-4 px-12 rounded-lg w-full sm:w-auto uppercase tracking-widest font-bold shadow-md shadow-blue-200 transition-all cursor-pointer"
+              >
+                Continue
+              </button>
+            )}
           </div>
         </section>
 
