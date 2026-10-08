@@ -40,14 +40,3 @@ services:
         sync: false
       - key: PAYPAL_SECRET
         sync: false
-      # MoMo thu tiền thật (test credentials mặc định trong code, key thật set ở đây khi có)
-      - key: MOMO_PARTNER_CODE
-        sync: false
-      - key: MOMO_ACCESS_KEY
-        sync: false
-      - key: MOMO_SECRET_KEY
-        sync: false
-      - key: MOMO_ENDPOINT
-        sync: false
-      - key: MOMO_IPN_URL
-        sync: false

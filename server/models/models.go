@@ -64,8 +64,8 @@ type Order struct {
 	Status          string          `json:"status" gorm:"default:pending"` // pending, confirmed, shipping, completed, cancelled
 	ShippingAddress EncryptedString `json:"shipping_address"`
 	Phone           EncryptedString `json:"phone"`
-	PaymentMethod   string          `json:"payment_method" gorm:"default:cod"` // cod | momo | paypal | card | bank
-	PaymentRef      string          `json:"payment_ref" gorm:"index"` // mã giao dịch cổng thanh toán (MoMo orderId, PayPal capture...)
+	PaymentMethod   string          `json:"payment_method" gorm:"default:cod"` // cod | paypal | card | bank | zalopay
+	PaymentRef      string          `json:"payment_ref" gorm:"index"` // mã giao dịch cổng thanh toán (để đối soát)
 	CouponCode      string          `json:"coupon_code"`
 	DiscountPercent int             `json:"discount_percent" gorm:"default:0"`
 	Items           []OrderItem     `json:"items,omitempty" gorm:"foreignKey:OrderID"`

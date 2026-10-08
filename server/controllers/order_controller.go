@@ -111,7 +111,7 @@ func CreateOrder(c *gin.Context) {
 	var input struct {
 		ShippingAddress string `json:"shipping_address" binding:"required"`
 		Phone           string `json:"phone" binding:"required"`
-		PaymentMethod   string `json:"payment_method"` // cod | momo
+		PaymentMethod   string `json:"payment_method"` // cod | paypal | card | bank | zalopay
 		CouponCode      string `json:"coupon_code"`
 	}
 

@@ -57,7 +57,7 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
   // Tab 3: Payment Methods
   const [paymentMethods, setPaymentMethods] = useState<SavedPaymentMethod[]>([]);
   const [showAddPaymentForm, setShowAddPaymentForm] = useState(false);
-  const [newPaymentType, setNewPaymentType] = useState<'card' | 'momo' | 'zalopay' | 'bank' | 'paypal'>('card');
+  const [newPaymentType, setNewPaymentType] = useState<'card' | 'zalopay' | 'bank' | 'paypal'>('card');
   const [cardHolder, setCardHolder] = useState('');
   const [cardNumber, setCardNumber] = useState('');
   const [cardExpiry, setCardExpiry] = useState('');
@@ -181,20 +181,6 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
         accountHolder: cardHolder.toUpperCase().trim(),
         providerName: cleanNum.startsWith('4') ? 'Visa' : 'Mastercard',
         cardExpiry: cardExpiry || '12/28',
-        isDefault: isDefaultMethod || paymentMethods.length === 0
-      };
-    } else if (newPaymentType === 'momo') {
-      if (!walletPhone.trim()) {
-        showToast('Vui lòng nhập số điện thoại MoMo.');
-        return;
-      }
-      newMethod = {
-        id: `pm-momo-${Date.now()}`,
-        type: 'momo',
-        label: `Ví Điện Tử MoMo (${walletPhone.trim()})`,
-        accountNumber: walletPhone.trim(),
-        accountHolder: (walletName.trim() || user.name).toUpperCase(),
-        providerName: 'MoMo',
         isDefault: isDefaultMethod || paymentMethods.length === 0
       };
     } else if (newPaymentType === 'zalopay') {
@@ -681,7 +667,7 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
                     <label className="block text-xs font-bold text-slate-700 mb-2">
                       Chọn Loại Phương Thức Thanh Toán:
                     </label>
-                    <div className={`grid grid-cols-2 gap-2 ${paypalLive ? 'sm:grid-cols-4' : 'sm:grid-cols-5'}`}>
+                    <div className={`grid grid-cols-2 gap-2 ${paypalLive ? 'sm:grid-cols-3' : 'sm:grid-cols-4'}`}>
                       <button
                         type="button"
                         onClick={() => setNewPaymentType('card')}
@@ -693,19 +679,6 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
                       >
                         <i className="fa-solid fa-credit-card text-lg"></i>
                         <span>Thẻ Tín Dụng / Visa</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setNewPaymentType('momo')}
-                        className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1.5 transition-all text-xs font-bold cursor-pointer ${
-                          newPaymentType === 'momo'
-                            ? 'bg-[#a50064] text-white border-[#a50064] shadow-sm'
-                            : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'
-                        }`}
-                      >
-                        <i className="fa-solid fa-wallet text-lg"></i>
-                        <span>Ví MoMo</span>
                       </button>
 
                       <button
@@ -802,11 +775,11 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
                     </div>
                   )}
 
-                  {(newPaymentType === 'momo' || newPaymentType === 'zalopay') && (
+                  {(newPaymentType === 'zalopay') && (
                     <div className="space-y-3 bg-white p-4 rounded-xl border border-slate-200">
                       <div>
                         <label className="block text-xs font-bold text-slate-700 mb-1">
-                          Số Điện Thoại Đăng Ký {newPaymentType === 'momo' ? 'Ví MoMo' : 'Ví ZaloPay'}{' '}
+                          Số Điện Thoại Đăng Ký Ví ZaloPay{' '}
                           <span className="text-red-500">*</span>
                         </label>
                         <input
@@ -962,7 +935,7 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
                         Chưa có phương thức thanh toán nào
                       </h5>
                       <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
-                        Hãy liên kết thẻ ngân hàng, ví MoMo, ZaloPay hoặc tài khoản ngân hàng để sử dụng khi thanh toán đơn hàng sách.
+                        Hãy liên kết thẻ ngân hàng, ví ZaloPay hoặc tài khoản ngân hàng để sử dụng khi thanh toán đơn hàng sách.
                       </p>
                     </div>
                     <button
@@ -988,9 +961,7 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
                       <div className="flex items-center gap-3.5 min-w-0">
                         <div
                           className={`w-12 h-12 rounded-xl flex items-center justify-center text-white shrink-0 shadow-xs ${
-                            method.type === 'momo'
-                              ? 'bg-[#a50064]'
-                              : method.type === 'zalopay'
+                            method.type === 'zalopay'
                               ? 'bg-blue-500'
                               : method.type === 'bank'
                               ? 'bg-emerald-700'
