@@ -71,38 +71,14 @@ func MomoCreate(c *gin.Context) {
 		return
 	}
 
-	// 1. Lưu đơn pending để có ID
-	var order models.Order
-	err := config.DB.Transaction(func(tx *gorm.DB) error {
-		order = models.Order{
-			UserID:          optionalUserID(c),
-			Total:           input.TotalVND,
-			Status:          "pending",
-			ShippingAddress: models.EncryptedString(input.ShippingAddress),
-			Phone:           models.EncryptedString(input.Phone),
-			PaymentMethod:   "momo",
-		}
-		if err := tx.Create(&order).Error; err != nil {
-			return err
-		}
-		for _, it := range input.Items {
-			if err := tx.Create(&models.OrderItem{OrderID: order.ID, Title: it.Title, Price: it.Price, Quantity: it.Quantity}).Error; err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không lưu được đơn: " + err.Error()})
-		return
-	}
-
-	// 2. Xin MoMo payUrl (orderId duy nhất theo đơn + thời gian)
+	// 1. Xin MoMo payUrl TRƯỚC (tránh lưu đơn rác khi MoMo từ chối).
+	// orderId duy nhất theo thời gian (gắn vào đơn sau khi MoMo chấp nhận)
 	partnerCode, accessKey, secret := momoPartnerCode(), momoAccessKey(), momoSecretKey()
-	orderID := fmt.Sprintf("BOKO%d-%d", order.ID, time.Now().Unix())
+	now := time.Now().Unix()
+	orderID := fmt.Sprintf("BOKO%d-%d", now%100000000, now%100000)
 	requestID := fmt.Sprintf("%s-%d", orderID, time.Now().UnixNano()%100000)
 	amount := fmt.Sprintf("%.0f", input.TotalVND)
-	orderInfo := fmt.Sprintf("Boko thanh toan don %d", order.ID)
+	orderInfo := "Boko thanh toan don hang"
 	redirectURL := strings.TrimSpace(input.RedirectURL)
 	if redirectURL == "" {
 		redirectURL = momoConf("MOMO_REDIRECT_URL", "https://app-eight-murex-41.vercel.app/payment-result")
@@ -137,8 +113,32 @@ func MomoCreate(c *gin.Context) {
 		return
 	}
 
-	// 3. Gắn mã MoMo vào đơn để IPN đối chiếu
-	config.DB.Model(&models.Order{}).Where("id = ?", order.ID).Update("payment_ref", orderID)
+	// 2. MoMo đã chấp nhận → lưu đơn pending + gắn mã MoMo để IPN đối chiếu
+	var order models.Order
+	err = config.DB.Transaction(func(tx *gorm.DB) error {
+		order = models.Order{
+			UserID:          optionalUserID(c),
+			Total:           input.TotalVND,
+			Status:          "pending",
+			ShippingAddress: models.EncryptedString(input.ShippingAddress),
+			Phone:           models.EncryptedString(input.Phone),
+			PaymentMethod:   "momo",
+			PaymentRef:      orderID,
+		}
+		if err := tx.Create(&order).Error; err != nil {
+			return err
+		}
+		for _, it := range input.Items {
+			if err := tx.Create(&models.OrderItem{OrderID: order.ID, Title: it.Title, Price: it.Price, Quantity: it.Quantity}).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không lưu được đơn: " + err.Error()})
+		return
+	}
 
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "Tạo link MoMo thành công!", "order_id": order.ID,
