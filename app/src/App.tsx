@@ -325,6 +325,8 @@ export default function App() {
                 appliedDiscountCode={appliedDiscountCode}
                 onApplyDiscountCode={handleApplyDiscountCode}
                 user={user}
+                // Ẩn iframe PayPal khi có popup phủ lên (iframe PayPal vẽ đè lên modal)
+                isOverlayOpen={isSettingsOpen || isOrderSuccessOpen || isCartOpen || isSearchOpen || isReaderOpen}
                 onOpenSettings={handleOpenSettings}
                 onOpenProfile={() => handleOpenSettings('profile')}
                 onSaveAddressToProfile={(address) => {

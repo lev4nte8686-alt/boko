@@ -17,6 +17,9 @@ interface CheckoutViewProps {
   onOpenSettings?: (tab?: 'profile' | 'address' | 'payments') => void;
   onOpenProfile?: () => void;
   onSaveAddressToProfile?: (address: ShippingAddress) => void;
+  // true khi có modal phủ lên (cài đặt, giỏ hàng, tìm kiếm...) — ẩn iframe PayPal
+  // vì iframe PayPal luôn vẽ đè lên modal (lỗi stacking của PayPal SDK)
+  isOverlayOpen?: boolean;
 }
 
 export const CheckoutView: React.FC<CheckoutViewProps> = ({
@@ -29,7 +32,8 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
   user,
   onOpenSettings,
   onOpenProfile,
-  onSaveAddressToProfile
+  onSaveAddressToProfile,
+  isOverlayOpen
 }) => {
   const [formData, setFormData] = useState<CheckoutFormState>({
     email: user?.email || 'customer@boko.com',
@@ -836,6 +840,8 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                           <strong className="text-slate-900">${totalUSD.toFixed(2)} USD</strong>{' '}
                           <span className="text-slate-400">(≈ {totalVND.toLocaleString('vi-VN')} ₫)</span>
                         </p>
+                        {/* Ẩn iframe khi modal mở (giữ khung để không nhảy layout) */}
+                        <div className={isOverlayOpen ? 'invisible' : ''}>
                         <PayPalScriptProvider options={{ clientId: paypalClientId, currency: 'USD' }}>
                           <PayPalButtons
                             style={{ layout: 'vertical', shape: 'rect', label: 'paypal' }}
@@ -860,6 +866,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                             onCancel={() => setFormErrors(['Bạn đã hủy thanh toán PayPal.'])}
                           />
                         </PayPalScriptProvider>
+                        </div>
                       </div>
                     ) : null}
                     {savedPaypal.length > 0 ? (
