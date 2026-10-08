@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { PayPalScriptProvider, PayPalButtons } from '@paypal/react-paypal-js';
 import { CartItem, CheckoutFormState, Currency, Order, User, ShippingAddress } from '../types';
 import { getBackendBaseUrl } from '../api/serverAuth';
+
+// PayPal không hỗ trợ VND → quy đổi sang USD theo tỷ giá này (giữ đồng bộ với backend vndPerUSD)
+const VND_PER_USD = 25000;
 
 interface CheckoutViewProps {
   cart: CartItem[];
@@ -133,6 +137,53 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
 
   const isEUR = currency === 'EUR';
 
+  // PayPal thật: Client ID public đọc từ env (Vercel: VITE_PAYPAL_CLIENT_ID).
+  // Không có = chế độ mock cũ (liên kết email trong Cài đặt).
+  const paypalClientId = (import.meta.env.VITE_PAYPAL_CLIENT_ID || '').trim();
+  const totalUSD = Math.round((totalVND / VND_PER_USD) * 100) / 100;
+
+  const buildShippingAddress = () =>
+    `${formData.streetAddress || formData.address}, ${formData.ward || ''}, ${formData.province || formData.city || ''}`
+      .replace(/(^,\s*|,\s*$)/g, '')
+      .trim();
+
+  const buildItemsPayload = () =>
+    displayItems.map((it) => ({
+      title: it.book.title,
+      price: it.book.priceVND,
+      quantity: it.quantity
+    }));
+
+  const makeLocalOrder = (id?: string): Order => ({
+    id: id || `BST-${Math.floor(100000 + Math.random() * 900000)}`,
+    date: new Date().toLocaleDateString('vi-VN'),
+    items: displayItems,
+    customer: formData,
+    subtotalEUR,
+    subtotalVND,
+    discountEUR,
+    discountVND,
+    vatEUR,
+    vatVND,
+    shippingEUR,
+    shippingVND,
+    totalEUR,
+    totalVND,
+    currency,
+    discountCode: appliedDiscountCode || undefined
+  });
+
+  // Kiểm tra form trước khi mở popup PayPal
+  const validateForPayPal = (): boolean => {
+    const errors: string[] = [];
+    if (!formData.email.trim()) errors.push('Vui lòng nhập Email');
+    if (!formData.firstName.trim()) errors.push('Vui lòng nhập Họ và Tên người nhận');
+    if (!formData.telephone.trim()) errors.push('Vui lòng nhập Số điện thoại');
+    if (!(formData.streetAddress || formData.address || '').trim()) errors.push('Vui lòng nhập Địa chỉ giao hàng');
+    setFormErrors(errors);
+    return errors.length === 0;
+  };
+
   const formatPrice = (eur: number, vnd: number) => {
     return isEUR ? `€ ${eur.toFixed(2)}` : `${vnd.toLocaleString('vi-VN')} ₫`;
   };
@@ -196,10 +247,17 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
       }
     }
 
-    if (formData.paymentMethod === 'paypal' && savedPaypal.length === 0) {
-      setFormErrors(['Bạn chưa liên kết tài khoản PayPal trong Cài đặt. Vui lòng liên kết trước khi tiếp tục.']);
-      handleOpenSettingsTab('payments');
-      return;
+    if (formData.paymentMethod === 'paypal') {
+      if (paypalClientId) {
+        // Thu thật qua nút PayPal ở trên — không đặt đơn bằng nút Continue
+        setFormErrors(['Vui lòng bấm nút PayPal ở trên để thanh toán. Đơn chỉ được lưu sau khi PayPal xác nhận tiền về.']);
+        return;
+      }
+      if (savedPaypal.length === 0) {
+        setFormErrors(['Bạn chưa liên kết tài khoản PayPal trong Cài đặt. Vui lòng liên kết trước khi tiếp tục.']);
+        handleOpenSettingsTab('payments');
+        return;
+      }
     }
 
     setFormErrors([]);
@@ -208,10 +266,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
     const baseUrl = getBackendBaseUrl();
     if (baseUrl) {
       try {
-        const shippingAddress =
-          `${formData.streetAddress || formData.address}, ${formData.ward || ''}, ${formData.province || formData.city || ''}`
-            .replace(/(^,\s*|,\s*$)/g, '')
-            .trim();
+        const shippingAddress = buildShippingAddress();
         const res = await fetch(`${baseUrl}/api/checkout`, {
           method: 'POST',
           headers: {
@@ -227,11 +282,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
             shipping_address: shippingAddress,
             phone: formData.telephone,
             payment_method: formData.paymentMethod === 'ewallet' ? 'momo' : formData.paymentMethod === 'bank' ? 'cod' : formData.paymentMethod,
-            items: displayItems.map((it) => ({
-              title: it.book.title,
-              price: it.book.priceVND,
-              quantity: it.quantity
-            }))
+            items: buildItemsPayload()
           })
         });
         if (!res.ok) {
@@ -243,26 +294,43 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
       }
     }
 
-    const newOrder: Order = {
-      id: `BST-${Math.floor(100000 + Math.random() * 900000)}`,
-      date: new Date().toLocaleDateString('vi-VN'),
-      items: displayItems,
-      customer: formData,
-      subtotalEUR,
-      subtotalVND,
-      discountEUR,
-      discountVND,
-      vatEUR,
-      vatVND,
-      shippingEUR,
-      shippingVND,
-      totalEUR,
-      totalVND,
-      currency,
-      discountCode: appliedDiscountCode || undefined
-    };
+    onOrderPlaced(makeLocalOrder());
+  };
 
-    onOrderPlaced(newOrder);
+  // Thu tiền thật qua PayPal: user approve → backend capture + verify → lưu đơn
+  const handlePayPalApprove = async (paypalOrderId: string) => {
+    const baseUrl = getBackendBaseUrl();
+    if (!baseUrl) {
+      setFormErrors(['Chưa cấu hình backend để xác thực PayPal.']);
+      return;
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/paypal/capture`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          ...(localStorage.getItem('boko_auth_token')
+            ? { Authorization: `Bearer ${localStorage.getItem('boko_auth_token')}` }
+            : {}),
+        },
+        body: JSON.stringify({
+          paypal_order_id: paypalOrderId,
+          shipping_address: buildShippingAddress(),
+          phone: formData.telephone,
+          items: buildItemsPayload()
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setFormErrors([data?.error || 'Xác thực thanh toán PayPal thất bại.']);
+        return;
+      }
+      setFormErrors([]);
+      onOrderPlaced(makeLocalOrder(`PP-${data.order_id}`));
+    } catch {
+      setFormErrors(['Không kết nối được máy chủ xác thực PayPal.']);
+    }
   };
 
   return (
@@ -761,6 +829,39 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
 
                 {formData.paymentMethod === 'paypal' && (
                   <div className="pt-2 border-t border-slate-100 animate-fadeIn space-y-3">
+                    {paypalClientId ? (
+                      <div className="space-y-2">
+                        <p className="text-xs text-slate-600 font-body">
+                          Tổng thanh toán qua PayPal:{' '}
+                          <strong className="text-slate-900">${totalUSD.toFixed(2)} USD</strong>{' '}
+                          <span className="text-slate-400">(≈ {totalVND.toLocaleString('vi-VN')} ₫)</span>
+                        </p>
+                        <PayPalScriptProvider options={{ clientId: paypalClientId, currency: 'USD' }}>
+                          <PayPalButtons
+                            style={{ layout: 'vertical', shape: 'rect', label: 'paypal' }}
+                            createOrder={(_data, actions) =>
+                              actions.order.create({
+                                intent: 'CAPTURE',
+                                purchase_units: [
+                                  {
+                                    description: 'Boko Bookstore order',
+                                    amount: { currency_code: 'USD', value: totalUSD.toFixed(2) }
+                                  }
+                                ]
+                              })
+                            }
+                            onClick={(_data, actions) =>
+                              validateForPayPal() ? actions.resolve() : actions.reject()
+                            }
+                            onApprove={async (data) => {
+                              await handlePayPalApprove(data.orderID);
+                            }}
+                            onError={() => setFormErrors(['Thanh toán PayPal thất bại. Vui lòng thử lại.'])}
+                            onCancel={() => setFormErrors(['Bạn đã hủy thanh toán PayPal.'])}
+                          />
+                        </PayPalScriptProvider>
+                      </div>
+                    ) : null}
                     {savedPaypal.length > 0 ? (
                       <div className="space-y-2">
                         <p className="text-xs font-bold text-slate-700">
@@ -800,7 +901,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                           <span>Quản lý tài khoản PayPal trong Cài đặt</span>
                         </button>
                       </div>
-                    ) : (
+                    ) : !paypalClientId ? (
                       <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 space-y-3 text-blue-950">
                         <div className="flex items-start gap-2">
                           <i className="fa-solid fa-circle-info text-[#003087] text-base shrink-0 mt-0.5"></i>
@@ -820,7 +921,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                           <span>Mở Cài Đặt Để Liên Kết PayPal</span>
                         </button>
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 )}
               </div>

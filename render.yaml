@@ -33,3 +33,10 @@ services:
       # Tạo bằng: openssl rand -base64 32 — bắt buộc set, nếu không sẽ dùng fallback key yếu
       - key: APP_ENCRYPTION_KEY
         sync: false
+      # PayPal thu tiền thật: MODE=sandbox|live, CLIENT_ID public, SECRET chỉ paste trên Render
+      - key: PAYPAL_MODE
+        value: sandbox
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_SECRET
+        sync: false

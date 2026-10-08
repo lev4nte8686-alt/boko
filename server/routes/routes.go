@@ -37,6 +37,9 @@ func SetupRoutes(r *gin.Engine) {
 	// Guest checkout — frontend gửi trực tiếp danh sách sản phẩm + địa chỉ
 	r.POST("/api/checkout", controllers.GuestCheckout)
 
+	// PayPal capture — frontend gửi paypal_order_id đã approve, backend verify rồi lưu đơn
+	r.POST("/api/paypal/capture", controllers.PaypalCapture)
+
 	// ==================== PROTECTED ROUTES ====================
 
 	auth := r.Group("/api")
