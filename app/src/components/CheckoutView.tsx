@@ -190,6 +190,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
     // Hiện lỗi ngay tại nút PayPal để khỏi phải kéo lên đầu form tìm
     setPaypalInlineError(errors.length > 0 ? ('Thiếu: ' + errors.join(' • ')) : null);
     if (errors.length > 0) {
+      setPaypalStep(null); // dừng ngay bước kiểm tra
       setTimeout(() => {
         document.getElementById('checkout-errors')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 50);
@@ -312,6 +313,8 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
 
   // Thu tiền thật qua PayPal: user approve → backend capture + verify → lưu đơn
   const [paypalVerifying, setPaypalVerifying] = useState<boolean>(false);
+  // Trạng thái từng bước để chẩn đoán từ xa (dừng ở bước nào = lỗi ở đó)
+  const [paypalStep, setPaypalStep] = useState<string | null>(null);
 
   const authHeaders = (): Record<string, string> => ({
     ...(localStorage.getItem('boko_auth_token')
@@ -321,15 +324,22 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
 
   // Tạo PayPal order phía server (luồng chuẩn)
   const handlePayPalCreate = async (): Promise<string> => {
+    setPaypalStep('Đang tạo đơn PayPal...');
     const baseUrl = getBackendBaseUrl();
     if (!baseUrl) throw new Error('Chưa cấu hình backend để tạo đơn PayPal.');
-    const res = await fetch(`${baseUrl}/api/paypal/orders`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...authHeaders() },
-      body: JSON.stringify({ total_vnd: totalVND })
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${baseUrl}/api/paypal/orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...authHeaders() },
+        body: JSON.stringify({ total_vnd: totalVND })
+      });
+    } catch {
+      throw new Error('Không kết nối được máy chủ (backend có thể đang khởi động, thử lại sau 1 phút).');
+    }
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data?.id) throw new Error(data?.error || 'Không tạo được đơn PayPal.');
+    setPaypalStep('Chờ bạn duyệt trong popup PayPal...');
     return data.id as string;
   };
 
@@ -363,6 +373,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
       }
       setFormErrors([]);
       setPaypalInlineError(null);
+      setPaypalStep(null);
       onOrderPlaced(makeLocalOrder(`PP-${data.order_id}`));
     } catch {
       setFormErrors(['Không kết nối được máy chủ xác thực PayPal.']);
@@ -883,14 +894,22 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                           <PayPalButtons
                             style={{ layout: 'vertical', shape: 'rect', label: 'paypal' }}
                             createOrder={() => handlePayPalCreate()}
-                            onClick={(_data, actions) =>
-                              validateForPayPal() ? actions.resolve() : actions.reject()
-                            }
+                            onClick={(_data, actions) => {
+                              setPaypalStep('Đã bấm nút, đang kiểm tra thông tin...');
+                              return validateForPayPal() ? actions.resolve() : actions.reject();
+                            }}
                             onApprove={async (data) => {
                               await handlePayPalApprove(data.orderID);
                             }}
-                            onError={() => setFormErrors(['Thanh toán PayPal thất bại. Vui lòng thử lại.'])}
-                            onCancel={() => setFormErrors(['Bạn đã hủy thanh toán PayPal.'])}
+                            onError={(err) => {
+                              setPaypalStep(null);
+                              const msg = (err as Error)?.message || JSON.stringify(err) || '';
+                              setFormErrors([`Thanh toán PayPal thất bại. Vui lòng thử lại. ${msg}`.trim()]);
+                            }}
+                            onCancel={() => {
+                              setPaypalStep(null);
+                              setFormErrors(['Bạn đã hủy thanh toán PayPal.']);
+                            }}
                           />
                         </PayPalScriptProvider>
                         {paypalVerifying && (
@@ -898,6 +917,9 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                             <span className="w-4 h-4 border-2 border-blue-300 border-t-blue-700 rounded-full animate-spin" />
                             <span>Đang xác thực thanh toán với PayPal, vui lòng đợi...</span>
                           </p>
+                        )}
+                        {!paypalVerifying && paypalStep && (
+                          <p className="text-xs font-semibold text-blue-700">Trạng thái: {paypalStep}</p>
                         )}
                         {paypalInlineError && (
                           <p className="text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-lg p-2.5">
