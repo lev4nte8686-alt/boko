@@ -40,6 +40,9 @@ func SetupRoutes(r *gin.Engine) {
 	// PayPal capture — frontend gửi paypal_order_id đã approve, backend verify rồi lưu đơn
 	r.POST("/api/paypal/capture", controllers.PaypalCapture)
 
+	// PayPal tạo đơn phía server (luồng chuẩn, tránh actions.order.create đã deprecated)
+	r.POST("/api/paypal/orders", controllers.PaypalCreateOrder)
+
 	// ==================== PROTECTED ROUTES ====================
 
 	auth := r.Group("/api")

@@ -119,7 +119,58 @@ func paypalCapture(orderID, accessToken string) (*paypalCaptureResult, error) {
 	return &paypalCaptureResult{Status: cap.Status, Currency: cap.Amount.CurrencyCode, Value: value, Capture: cap.ID}, nil
 }
 
-// PaypalCapture — POST /api/paypal/capture
+// PaypalCreateOrder — POST /api/paypal/orders
+// Server tạo PayPal order (intent CAPTURE) rồi trả orderID cho frontend duyệt.
+// Luồng server-side theo đúng chuẩn PayPal, tránh dùng actions.order.create (đã deprecated).
+func PaypalCreateOrder(c *gin.Context) {
+	var input struct {
+		TotalVND float64 `json:"total_vnd" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil || input.TotalVND <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Tổng tiền không hợp lệ"})
+		return
+	}
+	amount := fmt.Sprintf("%.2f", math.Round(input.TotalVND/vndPerUSD*100)/100)
+
+	token, err := paypalAccessToken()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	payload, _ := json.Marshal(map[string]interface{}{
+		"intent": "CAPTURE",
+		"purchase_units": []map[string]interface{}{
+			{
+				"description": "Boko Bookstore order",
+				"amount":      map[string]string{"currency_code": "USD", "value": amount},
+			},
+		},
+	})
+	req, _ := http.NewRequest("POST", paypalBaseURL()+"/v2/checkout/orders", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Không kết nối được PayPal: " + err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "PayPal từ chối tạo đơn: " + string(body)})
+		return
+	}
+	var out struct {
+		ID     string `json:"id"`
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(body, &out); err != nil || out.ID == "" {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Không đọc được đơn PayPal"})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"id": out.ID, "status": out.Status, "amount_usd": amount})
+}
 // Frontend gửi paypal_order_id (đã approve) + thông tin đơn. Backend capture,
 // đối chiếu số tiền USD ~ totalVND/25000 rồi mới lưu đơn (status=confirmed = đã thanh toán).
 func PaypalCapture(c *gin.Context) {

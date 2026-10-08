@@ -302,21 +302,42 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
   };
 
   // Thu tiền thật qua PayPal: user approve → backend capture + verify → lưu đơn
+  const [paypalVerifying, setPaypalVerifying] = useState<boolean>(false);
+
+  const authHeaders = (): Record<string, string> => ({
+    ...(localStorage.getItem('boko_auth_token')
+      ? { Authorization: `Bearer ${localStorage.getItem('boko_auth_token')}` }
+      : {}),
+  });
+
+  // Tạo PayPal order phía server (luồng chuẩn)
+  const handlePayPalCreate = async (): Promise<string> => {
+    const baseUrl = getBackendBaseUrl();
+    if (!baseUrl) throw new Error('Chưa cấu hình backend để tạo đơn PayPal.');
+    const res = await fetch(`${baseUrl}/api/paypal/orders`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...authHeaders() },
+      body: JSON.stringify({ total_vnd: totalVND })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.id) throw new Error(data?.error || 'Không tạo được đơn PayPal.');
+    return data.id as string;
+  };
+
   const handlePayPalApprove = async (paypalOrderId: string) => {
     const baseUrl = getBackendBaseUrl();
     if (!baseUrl) {
       setFormErrors(['Chưa cấu hình backend để xác thực PayPal.']);
       return;
     }
+    setPaypalVerifying(true);
     try {
       const res = await fetch(`${baseUrl}/api/paypal/capture`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json',
-          ...(localStorage.getItem('boko_auth_token')
-            ? { Authorization: `Bearer ${localStorage.getItem('boko_auth_token')}` }
-            : {}),
+          ...authHeaders(),
         },
         body: JSON.stringify({
           paypal_order_id: paypalOrderId,
@@ -335,6 +356,8 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
       onOrderPlaced(makeLocalOrder(`PP-${data.order_id}`));
     } catch {
       setFormErrors(['Không kết nối được máy chủ xác thực PayPal.']);
+    } finally {
+      setPaypalVerifying(false);
     }
   };
 
@@ -849,17 +872,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                         >
                           <PayPalButtons
                             style={{ layout: 'vertical', shape: 'rect', label: 'paypal' }}
-                            createOrder={(_data, actions) =>
-                              actions.order.create({
-                                intent: 'CAPTURE',
-                                purchase_units: [
-                                  {
-                                    description: 'Boko Bookstore order',
-                                    amount: { currency_code: 'USD', value: totalUSD.toFixed(2) }
-                                  }
-                                ]
-                              })
-                            }
+                            createOrder={() => handlePayPalCreate()}
                             onClick={(_data, actions) =>
                               validateForPayPal() ? actions.resolve() : actions.reject()
                             }
@@ -870,6 +883,12 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                             onCancel={() => setFormErrors(['Bạn đã hủy thanh toán PayPal.'])}
                           />
                         </PayPalScriptProvider>
+                        {paypalVerifying && (
+                          <p className="text-xs font-semibold text-blue-700 flex items-center gap-2">
+                            <span className="w-4 h-4 border-2 border-blue-300 border-t-blue-700 rounded-full animate-spin" />
+                            <span>Đang xác thực thanh toán với PayPal, vui lòng đợi...</span>
+                          </p>
+                        )}
                         </div>
                       </div>
                     ) : null}
