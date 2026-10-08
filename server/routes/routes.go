@@ -46,6 +46,8 @@ func SetupRoutes(r *gin.Engine) {
 	// Payments Webhook (public cho MoMo Sandbox Gateway gọi vào — nhóm)
 	r.POST("/api/payment/momo/ipn", controllers.MomoIPN)
 	r.POST("/api/payment/momo/mock-ipn/:id", controllers.MockMomoIPN)
+	// PayPal mock capture (public, test nội bộ không cần tiền thật)
+	r.POST("/api/payment/paypal/mock-capture/:id", controllers.MockPaypalCapture)
 
 	// ==================== PROTECTED ROUTES ====================
 
@@ -83,6 +85,11 @@ func SetupRoutes(r *gin.Engine) {
 		// Payments (user)
 		auth.POST("/payment/momo/create", controllers.CreateMomoPayment)
 		auth.GET("/payment/momo/status/:id", controllers.GetPaymentStatus)
+
+		// Payments PayPal (user) — cùng cấu trúc với MoMo
+		auth.POST("/payment/paypal/create", controllers.CreatePaypalPayment)
+		auth.POST("/payment/paypal/capture", controllers.CapturePaypalPayment)
+		auth.GET("/payment/paypal/status/:id", controllers.GetPaypalPaymentStatus)
 
 		// Reviews
 		auth.POST("/books/:id/reviews", controllers.CreateReview)
