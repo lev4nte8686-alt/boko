@@ -57,7 +57,7 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
   // Tab 3: Payment Methods
   const [paymentMethods, setPaymentMethods] = useState<SavedPaymentMethod[]>([]);
   const [showAddPaymentForm, setShowAddPaymentForm] = useState(false);
-  const [newPaymentType, setNewPaymentType] = useState<'card' | 'zalopay' | 'bank' | 'paypal' | 'atm'>('card');
+  const [newPaymentType, setNewPaymentType] = useState<'card' | 'bank' | 'paypal' | 'atm'>('card');
   const [cardHolder, setCardHolder] = useState('');
   const [cardNumber, setCardNumber] = useState('');
   const [cardExpiry, setCardExpiry] = useState('');
@@ -181,20 +181,6 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
         accountHolder: cardHolder.toUpperCase().trim(),
         providerName: cleanNum.startsWith('4') ? 'Visa' : 'Mastercard',
         cardExpiry: cardExpiry || '12/28',
-        isDefault: isDefaultMethod || paymentMethods.length === 0
-      };
-    } else if (newPaymentType === 'zalopay') {
-      if (!walletPhone.trim()) {
-        showToast('Vui lòng nhập số điện thoại ZaloPay.');
-        return;
-      }
-      newMethod = {
-        id: `pm-zalopay-${Date.now()}`,
-        type: 'zalopay',
-        label: `Ví ZaloPay (${walletPhone.trim()})`,
-        accountNumber: walletPhone.trim(),
-        accountHolder: (walletName.trim() || user.name).toUpperCase(),
-        providerName: 'ZaloPay',
         isDefault: isDefaultMethod || paymentMethods.length === 0
       };
     } else if (newPaymentType === 'atm') {
@@ -716,19 +702,6 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
 
                       <button
                         type="button"
-                        onClick={() => setNewPaymentType('zalopay')}
-                        className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1.5 transition-all text-xs font-bold cursor-pointer ${
-                          newPaymentType === 'zalopay'
-                            ? 'bg-blue-500 text-white border-blue-500 shadow-sm'
-                            : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'
-                        }`}
-                      >
-                        <i className="fa-solid fa-money-bill-wave text-lg"></i>
-                        <span>Ví ZaloPay</span>
-                      </button>
-
-                      <button
-                        type="button"
                         onClick={() => setNewPaymentType('bank')}
                         className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1.5 transition-all text-xs font-bold cursor-pointer ${
                           newPaymentType === 'bank'
@@ -804,38 +777,6 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
                             className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600/30"
                           />
                         </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {(newPaymentType === 'zalopay') && (
-                    <div className="space-y-3 bg-white p-4 rounded-xl border border-slate-200">
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1">
-                          Số Điện Thoại Đăng Ký Ví ZaloPay{' '}
-                          <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          type="tel"
-                          required
-                          value={walletPhone}
-                          onChange={(e) => setWalletPhone(e.target.value)}
-                          placeholder="Ví dụ: 0912 345 678"
-                          className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-body text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600/30"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1">
-                          Họ và Tên Chủ Ví
-                        </label>
-                        <input
-                          type="text"
-                          value={walletName}
-                          onChange={(e) => setWalletName(e.target.value)}
-                          placeholder={user.name}
-                          className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-body text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600/30"
-                        />
                       </div>
                     </div>
                   )}
@@ -1018,7 +959,7 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
                         Chưa có phương thức thanh toán nào
                       </h5>
                       <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
-                        Hãy liên kết thẻ ngân hàng, ví ZaloPay hoặc tài khoản ngân hàng để sử dụng khi thanh toán đơn hàng sách.
+                        Hãy liên kết thẻ ngân hàng, thẻ ATM, ví PayPal hoặc tài khoản ngân hàng để sử dụng khi thanh toán đơn hàng sách.
                       </p>
                     </div>
                     <button
@@ -1044,9 +985,7 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
                       <div className="flex items-center gap-3.5 min-w-0">
                         <div
                           className={`w-12 h-12 rounded-xl flex items-center justify-center text-white shrink-0 shadow-xs ${
-                            method.type === 'zalopay'
-                              ? 'bg-blue-500'
-                              : method.type === 'bank'
+                            method.type === 'bank'
                               ? 'bg-emerald-700'
                               : method.type === 'paypal'
                               ? 'bg-[#003087]'

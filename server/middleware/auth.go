@@ -12,6 +12,41 @@ import (
 // JwtSecret — khoá bí mật dùng để ký và xác thực JWT
 var JwtSecret = []byte("boko-secret-key-2024")
 
+// AuthOptional — middleware tuỳ chọn JWT token (của nhóm, dùng cho VNPay).
+// Nếu token hợp lệ thì gắn user vào context; nếu không có hoặc không hợp lệ
+// thì vẫn tiếp tục cho khách thực hiện
+func AuthOptional(c *gin.Context) {
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+		c.Next()
+		return
+	}
+
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("sai phương thức ký")
+		}
+		return JwtSecret, nil
+	})
+
+	if err == nil && token.Valid {
+		if claims, ok := token.Claims.(jwt.MapClaims); ok {
+			if uid, ok := claims["user_id"].(float64); ok {
+				c.Set("user_id", uint(uid))
+			}
+			if email, ok := claims["email"].(string); ok {
+				c.Set("email", email)
+			}
+			if role, ok := claims["role"].(string); ok {
+				c.Set("role", role)
+			}
+		}
+	}
+
+	c.Next()
+}
+
 // AuthRequired — middleware kiểm tra JWT token từ header Authorization
 func AuthRequired(c *gin.Context) {
 	authHeader := c.GetHeader("Authorization")

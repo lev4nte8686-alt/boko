@@ -69,7 +69,7 @@ export interface CheckoutFormState {
   cardNumber: string;
   cardExpiry: string;
   cardCvv: string;
-  ewalletType: 'zalopay';
+  ewalletType: 'vnpay';
 }
 
 export interface ShippingAddress {
@@ -82,11 +82,11 @@ export interface ShippingAddress {
 
 export interface SavedPaymentMethod {
   id: string;
-  type: 'card' | 'zalopay' | 'bank' | 'paypal' | 'atm';
-  label: string; // e.g. "Thẻ Visa •••• 8892" or "Ví ZaloPay - 0912 345 678"
+  type: 'card' | 'vnpay' | 'bank' | 'paypal' | 'atm';
+  label: string; // e.g. "Thẻ Visa •••• 8892" or "PayPal (email@example.com)"
   accountNumber: string;
   accountHolder: string;
-  providerName?: string; // e.g. "Visa", "Mastercard", "ZaloPay", "Vietcombank", "MB Bank"
+  providerName?: string; // e.g. "Visa", "Mastercard", "PayPal", "Vietcombank", "MB Bank"
   bankName?: string;
   cardExpiry?: string;
   isDefault: boolean;

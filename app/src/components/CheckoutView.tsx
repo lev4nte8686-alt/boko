@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { PayPalScriptProvider, PayPalButtons } from '@paypal/react-paypal-js';
 import { CartItem, CheckoutFormState, Currency, Order, User, ShippingAddress } from '../types';
 import { getBackendBaseUrl } from '../api/serverAuth';
+import { createVnpayPaymentApi } from '../api/payment';
 
 // PayPal không hỗ trợ VND → quy đổi sang USD theo tỷ giá này (giữ đồng bộ với backend vndPerUSD)
 const VND_PER_USD = 25000;
@@ -53,7 +54,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
     cardNumber: '4532 •••• •••• 8892',
     cardExpiry: '12/28',
     cardCvv: '882',
-    ewalletType: 'zalopay'
+    ewalletType: 'vnpay'
   });
 
   const [selectedSavedPaymentId, setSelectedSavedPaymentId] = useState<string | null>(null);
@@ -61,7 +62,6 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
 
   const savedCards = (user?.paymentMethods || []).filter((m) => m.type === 'card');
   const savedAtm = (user?.paymentMethods || []).filter((m) => m.type === 'atm');
-  const savedZalo = (user?.paymentMethods || []).filter((m) => m.type === 'zalopay');
   const savedBanks = (user?.paymentMethods || []).filter((m) => m.type === 'bank');
   const savedPaypal = (user?.paymentMethods || []).filter((m) => m.type === 'paypal');
 
@@ -255,11 +255,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
     }
 
     if (formData.paymentMethod === 'ewallet') {
-      if (savedZalo.length === 0) {
-        setFormErrors(['Bạn chưa liên kết Ví ZaloPay trong Cài đặt. Vui lòng liên kết ví trước khi tiếp tục.']);
-        handleOpenSettingsTab('payments');
-        return;
-      }
+      // VNPay thu thật bằng redirect — không cần liên kết ví trước
     }
 
     if (formData.paymentMethod === 'paypal') {
@@ -280,6 +276,34 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
     // Gửi đơn đặt hàng lên backend (nếu có) — backend sẽ mã hóa ShippingAddress
     const baseUrl = getBackendBaseUrl();
 
+    // VNPay thu thật: backend tạo đơn + xin link, web chuyển hướng sang VNPay.
+    // VNPay trả kết quả về /payment/vnpay-callback, IPN lật đơn thành paid.
+    if (formData.paymentMethod === 'ewallet') {
+      if (!baseUrl) {
+        setFormErrors(['Chưa cấu hình backend để thanh toán VNPay.']);
+        return;
+      }
+      setVnpayProcessing(true);
+      try {
+        const data = await createVnpayPaymentApi({
+          amount: totalVND,
+          shippingAddress: buildShippingAddress(),
+          phone: formData.telephone,
+          email: formData.email,
+          redirectUrl: `${window.location.origin}/payment/vnpay-callback`,
+        });
+        if (!data?.payment_url) {
+          setFormErrors(['Không tạo được giao dịch VNPay.']);
+          setVnpayProcessing(false);
+          return;
+        }
+        window.location.href = data.payment_url;
+      } catch (err: unknown) {
+        setFormErrors([(err as Error)?.message || 'Không kết nối được máy chủ VNPay.']);
+        setVnpayProcessing(false);
+      }
+      return;
+    }
     if (baseUrl) {
       try {
         const shippingAddress = buildShippingAddress();
@@ -297,7 +321,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
           body: JSON.stringify({
             shipping_address: shippingAddress,
             phone: formData.telephone,
-            payment_method: formData.paymentMethod === 'ewallet' ? 'zalopay' : formData.paymentMethod === 'bank' ? 'cod' : formData.paymentMethod,
+            payment_method: formData.paymentMethod === 'ewallet' ? 'vnpay' : formData.paymentMethod === 'bank' ? 'cod' : formData.paymentMethod,
             items: buildItemsPayload()
           })
         });
@@ -315,6 +339,8 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
 
   // Thu tiền thật qua PayPal: user approve → backend capture + verify → lưu đơn
   const [paypalVerifying, setPaypalVerifying] = useState<boolean>(false);
+  // VNPay redirect: đang chờ backend tạo link
+  const [vnpayProcessing, setVnpayProcessing] = useState<boolean>(false);
   // Trạng thái từng bước để chẩn đoán từ xa (dừng ở bước nào = lỗi ở đó)
   const [paypalStep, setPaypalStep] = useState<string | null>(null);
 
@@ -826,7 +852,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                 )}
               </div>
 
-              {/* E-wallets Option */}
+              {/* VNPay Option (thu thật bằng redirect) */}
               <div className="p-4 bg-white rounded-xl border border-slate-200 space-y-4">
                 <div className="flex items-center gap-3">
                   <input
@@ -836,51 +862,23 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                     checked={formData.paymentMethod === 'ewallet'}
                     onChange={() => {
                       setFormData((p) => ({ ...p, paymentMethod: 'ewallet' }));
-                      if (savedZalo.length === 0) {
-                        handleOpenSettingsTab('payments');
-                      }
                     }}
                     className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer"
                   />
                   <label htmlFor="payment-ewallet" className="font-body text-base font-semibold text-slate-900 cursor-pointer">
-                    Ví Điện Tử (ZaloPay)
+                    VNPay (thẻ ATM / QR ngân hàng)
                   </label>
                   <div className="flex gap-2 ml-auto">
-                    <i className="fa-solid fa-wallet text-slate-400 text-base"></i>
+                    <i className="fa-solid fa-qrcode text-slate-400 text-base"></i>
                   </div>
                 </div>
 
                 {formData.paymentMethod === 'ewallet' && (
                   <div className="pt-2 border-t border-slate-100 animate-fadeIn space-y-3">
-                    {savedZalo.length > 0 ? (
-                        <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 space-y-1">
-                          <p className="text-xs font-bold text-blue-950 flex items-center gap-1.5">
-                            <i className="fa-solid fa-circle-check text-blue-700 text-sm"></i>
-                            <span>Ví ZaloPay đã liên kết: {savedZalo[0].accountNumber}</span>
-                          </p>
-                          <p className="text-[11px] text-blue-800">Chủ tài khoản: {savedZalo[0].accountHolder}</p>
-                        </div>
-                      ) : (
-                        <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 space-y-3 text-blue-950">
-                          <div className="flex items-start gap-2">
-                            <i className="fa-solid fa-circle-info text-blue-700 text-base shrink-0 mt-0.5"></i>
-                            <div>
-                              <p className="text-xs font-bold">Chưa liên kết Ví ZaloPay trong Cài đặt</p>
-                              <p className="text-xs text-blue-900 mt-0.5">
-                                Tích hợp ví ZaloPay trong Cài đặt để tự động thanh toán đơn hàng.
-                              </p>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenSettingsTab('payments')}
-                            className="w-full sm:w-auto px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
-                          >
-                            <i className="fa-solid fa-link text-xs"></i>
-                          <span>Mở Cài Đặt Để Liên Kết Ví ZaloPay</span>
-                        </button>
-                      </div>
-                    )}
+                    <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 text-xs text-blue-900 flex items-center gap-2">
+                      <i className="fa-solid fa-circle-info text-blue-700 text-sm"></i>
+                      <span>Bấm Continue để mở cổng VNPay và thanh toán đúng số tiền — không cần liên kết trước.</span>
+                    </div>
                   </div>
                 )}
               </div>
@@ -1118,9 +1116,13 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
               <button
                 type="button"
                 onClick={handleSubmitOrder}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-label-caps text-xs py-4 px-12 rounded-lg w-full sm:w-auto uppercase tracking-widest font-bold shadow-md shadow-blue-200 transition-all cursor-pointer"
+                disabled={vnpayProcessing}
+                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-label-caps text-xs py-4 px-12 rounded-lg w-full sm:w-auto uppercase tracking-widest font-bold shadow-md shadow-blue-200 transition-all cursor-pointer flex items-center justify-center gap-2"
               >
-                Continue
+                {vnpayProcessing && (
+                  <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                )}
+                <span>{vnpayProcessing ? 'ĐANG MỞ VNPAY...' : 'Continue'}</span>
               </button>
             )}
           </div>

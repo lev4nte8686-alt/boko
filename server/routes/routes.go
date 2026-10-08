@@ -46,6 +46,11 @@ func SetupRoutes(r *gin.Engine) {
 	// Payments Webhook (public cho MoMo Sandbox Gateway gọi vào — nhóm)
 	r.POST("/api/payment/momo/ipn", controllers.MomoIPN)
 	r.POST("/api/payment/momo/mock-ipn/:id", controllers.MockMomoIPN)
+
+	// VNPAY Payment Routes (nhóm: IPN public, create/status dùng AuthOptional)
+	r.GET("/api/payment/vnpay/ipn", controllers.VnPayIPN)
+	r.GET("/api/payment/vnpay/status/:id", middleware.AuthOptional, controllers.GetVnPayPaymentStatus)
+	r.POST("/api/payment/vnpay/create", middleware.AuthOptional, controllers.CreateVnPayPayment)
 	// PayPal mock capture (public, test nội bộ không cần tiền thật)
 	r.POST("/api/payment/paypal/mock-capture/:id", controllers.MockPaypalCapture)
 

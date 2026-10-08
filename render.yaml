@@ -40,3 +40,12 @@ services:
         sync: false
       - key: PAYPAL_SECRET
         sync: false
+      # VNPay (nhóm): test credentials mặc định trong code, key thật set ở đây khi có
+      - key: VNPAY_TMN_CODE
+        sync: false
+      - key: VNPAY_HASH_SECRET
+        sync: false
+      - key: VNPAY_RETURN_URL
+        sync: false
+      - key: VNPAY_IPN_URL
+        sync: false
