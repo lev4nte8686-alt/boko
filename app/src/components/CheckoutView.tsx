@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { PayPalScriptProvider, PayPalButtons } from '@paypal/react-paypal-js';
+import { QRCodeSVG } from 'qrcode.react';
 import { CartItem, CheckoutFormState, Currency, Order, User, ShippingAddress } from '../types';
 import { getBackendBaseUrl } from '../api/serverAuth';
 
@@ -275,8 +276,8 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
     // Gửi đơn đặt hàng lên backend (nếu có) — backend sẽ mã hóa ShippingAddress
     const baseUrl = getBackendBaseUrl();
 
-    // MoMo thu thật: backend tạo đơn pending + xin payUrl, web chuyển hướng sang MoMo.
-    // MoMo trả kết quả về /payment-result, IPN lật đơn thành confirmed.
+    // MoMo QR: backend tạo đơn pending + xin payUrl, web hiện QR để quét trả tiền.
+    // Khi MoMo IPN báo thành công, đơn tự lật thành confirmed (poll bên dưới).
     if (formData.paymentMethod === 'ewallet' && formData.ewalletType === 'momo') {
       if (!baseUrl) {
         setFormErrors(['Chưa cấu hình backend để thanh toán MoMo.']);
@@ -305,8 +306,20 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
           setMomoProcessing(false);
           return;
         }
-        sessionStorage.setItem('boko_pending_momo_order', String(data.order_id));
-        window.location.href = data.pay_url;
+        setMomoProcessing(false);
+        setMomoQR({ payUrl: data.pay_url, momoOrderId: data.momo_order_id, orderId: data.order_id });
+        setMomoChecking(true);
+        stopMomoPoll();
+        momoPollRef.current = window.setInterval(async () => {
+          const ok = await checkMomoResult(data.momo_order_id);
+          if (ok) {
+            stopMomoPoll();
+            setMomoChecking(false);
+            setMomoQR(null);
+            setFormErrors([]);
+            onOrderPlaced(makeLocalOrder(`MOMO-${data.order_id}`));
+          }
+        }, 3000);
       } catch {
         setFormErrors(['Không kết nối được máy chủ MoMo.']);
         setMomoProcessing(false);
@@ -348,8 +361,33 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
 
   // Thu tiền thật qua PayPal: user approve → backend capture + verify → lưu đơn
   const [paypalVerifying, setPaypalVerifying] = useState<boolean>(false);
-  // MoMo redirect: đang chờ backend tạo link
+  // MoMo QR: hiện mã QR link trả tiền, poll chờ IPN xác nhận rồi tự lưu đơn
   const [momoProcessing, setMomoProcessing] = useState<boolean>(false);
+  const [momoQR, setMomoQR] = useState<{ payUrl: string; momoOrderId: string; orderId: number } | null>(null);
+  const [momoChecking, setMomoChecking] = useState<boolean>(false);
+  const momoPollRef = useRef<number | null>(null);
+
+  const checkMomoResult = async (momoOrderId: string): Promise<boolean> => {
+    const baseUrl = getBackendBaseUrl();
+    if (!baseUrl) return false;
+    try {
+      const res = await fetch(`${baseUrl}/api/momo/result?orderId=${encodeURIComponent(momoOrderId)}`);
+      if (!res.ok) return false;
+      const data = await res.json();
+      return data?.status === 'confirmed';
+    } catch {
+      return false;
+    }
+  };
+
+  const stopMomoPoll = () => {
+    if (momoPollRef.current) {
+      window.clearInterval(momoPollRef.current);
+      momoPollRef.current = null;
+    }
+  };
+
+  useEffect(() => stopMomoPoll, []);
   // Trạng thái từng bước để chẩn đoán từ xa (dừng ở bước nào = lỗi ở đó)
   const [paypalStep, setPaypalStep] = useState<string | null>(null);
 
@@ -834,7 +872,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                       ) : (
                         <div className="p-3 rounded-xl bg-pink-50/70 border border-pink-200 text-xs text-pink-900 flex items-center gap-2">
                           <i className="fa-solid fa-circle-info text-pink-700 text-sm"></i>
-                          <span>Bấm Continue để mở MoMo và thanh toán thật — không cần liên kết ví trước.</span>
+                          <span>Bấm Continue để hiện mã QR MoMo đúng số tiền — quét trả xong đơn tự lưu, không cần liên kết ví.</span>
                         </div>
                       )
                     )}
@@ -1235,6 +1273,65 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
           </div>
         </aside>
       </main>
+
+      {/* Modal QR MoMo — quét để trả đúng số tiền, đơn tự lưu khi MoMo xác nhận */}
+      {momoQR && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 text-center space-y-4 border border-slate-200">
+            <div className="flex items-center justify-center gap-2">
+              <span className="w-9 h-9 rounded-xl bg-[#a50064] text-white flex items-center justify-center font-bold text-sm">M</span>
+              <h3 className="font-display font-bold text-lg text-slate-900">Quét mã để thanh toán MoMo</h3>
+            </div>
+            <div className="bg-white border-2 border-dashed border-pink-300 rounded-2xl p-4 inline-block">
+              <QRCodeSVG value={momoQR.payUrl} size={220} level="M" />
+            </div>
+            <div className="text-sm text-slate-700 space-y-1">
+              <p>
+                Số tiền: <strong className="text-slate-900">{totalVND.toLocaleString('vi-VN')} ₫</strong>
+              </p>
+              <p className="text-xs text-slate-500">Mã đơn: <span className="font-mono">{momoQR.momoOrderId}</span></p>
+            </div>
+            {momoChecking ? (
+              <p className="text-xs font-semibold text-blue-700 flex items-center justify-center gap-2">
+                <span className="w-4 h-4 border-2 border-blue-300 border-t-blue-700 rounded-full animate-spin" />
+                <span>Đang chờ MoMo xác nhận thanh toán...</span>
+              </p>
+            ) : null}
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={async () => {
+                  const ok = await checkMomoResult(momoQR.momoOrderId);
+                  if (ok) {
+                    stopMomoPoll();
+                    setMomoChecking(false);
+                    setMomoQR(null);
+                    setFormErrors([]);
+                    onOrderPlaced(makeLocalOrder(`MOMO-${momoQR.orderId}`));
+                  } else {
+                    setFormErrors(['MoMo chưa xác nhận thanh toán. Quét mã và trả tiền trước rồi bấm lại.']);
+                  }
+                }}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-[#a50064] hover:bg-[#8e0056] text-white font-bold text-xs transition-all cursor-pointer"
+              >
+                Tôi đã thanh toán xong
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  stopMomoPoll();
+                  setMomoChecking(false);
+                  setMomoQR(null);
+                }}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-400">Mở camera điện thoại quét mã để tới trang trả tiền MoMo.</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
