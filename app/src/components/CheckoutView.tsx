@@ -249,16 +249,12 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
     }
 
     if (formData.paymentMethod === 'ewallet') {
-      if (formData.ewalletType === 'momo' && savedMomo.length === 0) {
-        setFormErrors(['Bạn chưa liên kết Ví MoMo trong Cài đặt. Vui lòng liên kết ví trước khi tiếp tục.']);
-        handleOpenSettingsTab('payments');
-        return;
-      }
       if (formData.ewalletType === 'zalopay' && savedZalo.length === 0) {
         setFormErrors(['Bạn chưa liên kết Ví ZaloPay trong Cài đặt. Vui lòng liên kết ví trước khi tiếp tục.']);
         handleOpenSettingsTab('payments');
         return;
       }
+      // MoMo thu thật bằng redirect — không cần liên kết ví trước
     }
 
     if (formData.paymentMethod === 'paypal') {
@@ -278,6 +274,45 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
 
     // Gửi đơn đặt hàng lên backend (nếu có) — backend sẽ mã hóa ShippingAddress
     const baseUrl = getBackendBaseUrl();
+
+    // MoMo thu thật: backend tạo đơn pending + xin payUrl, web chuyển hướng sang MoMo.
+    // MoMo trả kết quả về /payment-result, IPN lật đơn thành confirmed.
+    if (formData.paymentMethod === 'ewallet' && formData.ewalletType === 'momo') {
+      if (!baseUrl) {
+        setFormErrors(['Chưa cấu hình backend để thanh toán MoMo.']);
+        return;
+      }
+      setMomoProcessing(true);
+      try {
+        const res = await fetch(`${baseUrl}/api/momo/create`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            ...authHeaders(),
+          },
+          body: JSON.stringify({
+            total_vnd: totalVND,
+            shipping_address: buildShippingAddress(),
+            phone: formData.telephone,
+            redirect_url: `${window.location.origin}/payment-result`,
+            items: buildItemsPayload()
+          })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data?.pay_url) {
+          setFormErrors([data?.error || 'Không tạo được giao dịch MoMo.']);
+          setMomoProcessing(false);
+          return;
+        }
+        sessionStorage.setItem('boko_pending_momo_order', String(data.order_id));
+        window.location.href = data.pay_url;
+      } catch {
+        setFormErrors(['Không kết nối được máy chủ MoMo.']);
+        setMomoProcessing(false);
+      }
+      return;
+    }
     if (baseUrl) {
       try {
         const shippingAddress = buildShippingAddress();
@@ -313,6 +348,8 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
 
   // Thu tiền thật qua PayPal: user approve → backend capture + verify → lưu đơn
   const [paypalVerifying, setPaypalVerifying] = useState<boolean>(false);
+  // MoMo redirect: đang chờ backend tạo link
+  const [momoProcessing, setMomoProcessing] = useState<boolean>(false);
   // Trạng thái từng bước để chẩn đoán từ xa (dừng ở bước nào = lỗi ở đó)
   const [paypalStep, setPaypalStep] = useState<string | null>(null);
 
@@ -795,24 +832,9 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                           <p className="text-[11px] text-pink-800">Chủ tài khoản: {savedMomo[0].accountHolder}</p>
                         </div>
                       ) : (
-                        <div className="p-4 rounded-xl bg-pink-50/70 border border-pink-200 space-y-3 text-pink-950">
-                          <div className="flex items-start gap-2">
-                            <i className="fa-solid fa-circle-info text-pink-700 text-base shrink-0 mt-0.5"></i>
-                            <div>
-                              <p className="text-xs font-bold">Chưa liên kết Ví MoMo trong Cài đặt</p>
-                              <p className="text-xs text-pink-900 mt-0.5">
-                                Tích hợp ví MoMo trong Cài đặt để xác thực và thanh toán 1 chạm an toàn.
-                              </p>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenSettingsTab('payments')}
-                            className="w-full sm:w-auto px-4 py-2 rounded-lg bg-[#a50064] hover:bg-[#8e0056] text-white font-bold text-xs transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
-                          >
-                            <i className="fa-solid fa-link text-xs"></i>
-                            <span>Mở Cài Đặt Để Liên Kết Ví MoMo</span>
-                          </button>
+                        <div className="p-3 rounded-xl bg-pink-50/70 border border-pink-200 text-xs text-pink-900 flex items-center gap-2">
+                          <i className="fa-solid fa-circle-info text-pink-700 text-sm"></i>
+                          <span>Bấm Continue để mở MoMo và thanh toán thật — không cần liên kết ví trước.</span>
                         </div>
                       )
                     )}
@@ -1085,9 +1107,13 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
               <button
                 type="button"
                 onClick={handleSubmitOrder}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-label-caps text-xs py-4 px-12 rounded-lg w-full sm:w-auto uppercase tracking-widest font-bold shadow-md shadow-blue-200 transition-all cursor-pointer"
+                disabled={momoProcessing}
+                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-label-caps text-xs py-4 px-12 rounded-lg w-full sm:w-auto uppercase tracking-widest font-bold shadow-md shadow-blue-200 transition-all cursor-pointer flex items-center justify-center gap-2"
               >
-                Continue
+                {momoProcessing && (
+                  <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                )}
+                <span>{momoProcessing ? 'ĐANG MỞ MOMO...' : 'Continue'}</span>
               </button>
             )}
           </div>

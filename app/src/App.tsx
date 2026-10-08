@@ -15,6 +15,7 @@ import { UsedBooksMarketView } from './components/UsedBooksMarketView';
 import { OrderSuccessModal } from './components/OrderSuccessModal';
 import { UserSettingsModal, SettingsTab } from './components/UserSettingsModal';
 import { LoginPage } from './pages/LoginPage';
+import { PaymentResultPage } from './pages/PaymentResultPage';
 import { RequireAuth } from './components/RequireAuth';
 import { getStoredAuthUser, logoutApi } from './api/auth';
 
@@ -364,6 +365,9 @@ export default function App() {
         />
 
         <Route path="/signup" element={<Navigate to="/register" replace />} />
+
+        {/* Kết quả thanh toán MoMo redirect về (public) */}
+        <Route path="/payment-result" element={<PaymentResultPage />} />
 
         {/* Catch-all fallback Route -> If user not logged in, show RequireAuth; else redirect to / */}
         <Route

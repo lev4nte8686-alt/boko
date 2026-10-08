@@ -43,6 +43,11 @@ func SetupRoutes(r *gin.Engine) {
 	// PayPal tạo đơn phía server (luồng chuẩn, tránh actions.order.create đã deprecated)
 	r.POST("/api/paypal/orders", controllers.PaypalCreateOrder)
 
+	// MoMo: tạo link thanh toán + nhận IPN + tra cứu kết quả
+	r.POST("/api/momo/create", controllers.MomoCreate)
+	r.POST("/api/momo/ipn", controllers.MomoIPN)
+	r.GET("/api/momo/result", controllers.MomoResult)
+
 	// ==================== PROTECTED ROUTES ====================
 
 	auth := r.Group("/api")

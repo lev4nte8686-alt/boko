@@ -65,6 +65,7 @@ type Order struct {
 	ShippingAddress EncryptedString `json:"shipping_address"`
 	Phone           EncryptedString `json:"phone"`
 	PaymentMethod   string          `json:"payment_method" gorm:"default:cod"` // cod | momo | paypal | card | bank
+	PaymentRef      string          `json:"payment_ref" gorm:"index"` // mã giao dịch cổng thanh toán (MoMo orderId, PayPal capture...)
 	CouponCode      string          `json:"coupon_code"`
 	DiscountPercent int             `json:"discount_percent" gorm:"default:0"`
 	Items           []OrderItem     `json:"items,omitempty" gorm:"foreignKey:OrderID"`
