@@ -265,6 +265,13 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
     setTimeout(() => setCopiedBank(false), 2000);
   };
 
+  const [copiedAmount, setCopiedAmount] = useState<boolean>(false);
+  const handleCopyAmount = () => {
+    navigator.clipboard.writeText(String(Math.max(0, Math.round(totalVND))));
+    setCopiedAmount(true);
+    setTimeout(() => setCopiedAmount(false), 2000);
+  };
+
   const handleSubmitOrder = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -1098,40 +1105,87 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                       </div>
                     )}
 
-                    <div className="bg-slate-50 p-6 border border-slate-200 rounded-xl flex flex-col items-center gap-4 text-center">
-                      <div className="bg-white border border-slate-200 p-3 rounded-lg shadow-xs">
-                        <QRCodeSVG
-                          value={buildVietQR(SHOP_BANK_BIN, SHOP_BANK_ACC, totalVND, 'BOKO THANH TOAN')}
-                          size={168}
-                          level="M"
-                        />
-                        <span className="block text-[10px] text-slate-500 uppercase font-bold mt-2">
-                          BIBLIOTHECA QR • {totalVND.toLocaleString('vi-VN')} ₫
-                        </span>
+                    <div className="relative overflow-hidden rounded-2xl border border-emerald-900/20 shadow-md">
+                      {/* Nền thẻ: gradient xanh VCB + họa tiết */}
+                      <div className="absolute inset-0 bg-gradient-to-br from-emerald-950 via-emerald-900 to-teal-900"></div>
+                      <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-emerald-400/20 blur-2xl"></div>
+                      <div className="absolute -bottom-12 -left-12 w-44 h-44 rounded-full bg-teal-300/20 blur-2xl"></div>
+
+                      <div className="relative p-5 sm:p-6 flex flex-col items-center gap-4 text-center">
+                        <div className="flex items-center gap-2 text-emerald-100/90">
+                          <i className="fa-solid fa-building-columns text-sm"></i>
+                          <span className="text-[11px] font-bold uppercase tracking-[0.2em]">
+                            Vietcombank • Chuyển khoản QR
+                          </span>
+                        </div>
+
+                        <div className="bg-white p-3 rounded-2xl shadow-lg ring-4 ring-white/20">
+                          <QRCodeSVG
+                            value={buildVietQR(SHOP_BANK_BIN, SHOP_BANK_ACC, totalVND, 'BOKO THANH TOAN')}
+                            size={180}
+                            level="M"
+                          />
+                        </div>
+
+                        <div>
+                          <p className="text-[11px] uppercase tracking-widest text-emerald-200/80 font-semibold">
+                            Số tiền cần chuyển
+                          </p>
+                          <p className="font-display font-bold text-3xl text-white tracking-tight">
+                            {totalVND.toLocaleString('vi-VN')} ₫
+                          </p>
+                        </div>
+
+                        <div className="w-full bg-white/10 backdrop-blur-sm border border-white/15 rounded-xl px-4 py-3 text-left space-y-2">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-[10px] uppercase tracking-wider text-emerald-200/70 font-semibold">Số tài khoản</p>
+                              <p className="font-mono font-bold text-white text-sm tracking-wider">8899 2026 8888</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={handleCopyAccount}
+                              className="shrink-0 px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                            >
+                              <i className="fa-solid fa-copy text-xs"></i>
+                              <span>{copiedBank ? 'Đã chép!' : 'Chép STK'}</span>
+                            </button>
+                          </div>
+                          <div className="flex items-center justify-between gap-3 border-t border-white/10 pt-2">
+                            <div className="min-w-0">
+                              <p className="text-[10px] uppercase tracking-wider text-emerald-200/70 font-semibold">Số tiền</p>
+                              <p className="font-mono font-bold text-white text-sm">{Math.max(0, Math.round(totalVND)).toLocaleString('vi-VN')} ₫</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={handleCopyAmount}
+                              className="shrink-0 px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                            >
+                              <i className="fa-solid fa-copy text-xs"></i>
+                              <span>{copiedAmount ? 'Đã chép!' : 'Chép số tiền'}</span>
+                            </button>
+                          </div>
+                          <p className="text-[11px] text-emerald-100/80 border-t border-white/10 pt-2">
+                            Chủ TK: <strong className="text-white">BIBLIOTHECA STILLE CO., LTD</strong>
+                            <span className="mx-1">•</span>
+                            Nội dung: <strong className="text-white font-mono">BOKO THANH TOAN</strong>
+                          </p>
+                        </div>
+
+                        <p className="text-[11px] text-emerald-100/70 font-body">
+                          Mở app ngân hàng bất kỳ → quét mã → kiểm tra đúng số tiền rồi xác nhận.
+                        </p>
                       </div>
-                      <div className="text-xs text-slate-700 space-y-1">
-                        <p className="font-bold text-slate-900">Ngân hàng thụ hưởng: Vietcombank (VCB)</p>
-                        <p>STK: <strong className="font-mono text-blue-600">88992026888</strong></p>
-                        <p>Chủ TK: BIBLIOTHECA STILLE CO., LTD</p>
-                        <button
-                          type="button"
-                          onClick={handleCopyAccount}
-                          className="mt-2 text-[11px] font-bold text-blue-600 hover:text-blue-700 underline flex items-center justify-center gap-1 mx-auto cursor-pointer"
-                        >
-                          <i className="fa-solid fa-copy text-xs"></i>
-                          <span>{copiedBank ? 'Đã sao chép STK!' : 'Sao chép STK ngân hàng'}</span>
-                        </button>
-                      </div>
-                      <div className="pt-2 border-t border-slate-200 w-full">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenSettingsTab('payments')}
-                          className="text-xs text-blue-600 hover:underline font-semibold flex items-center justify-center gap-1.5 mx-auto cursor-pointer"
-                        >
-                          <i className="fa-solid fa-gear text-xs"></i>
-                          <span>Quản lý tài khoản ngân hàng trong Cài đặt</span>
-                        </button>
-                      </div>
+                    </div>
+                    <div className="pt-1 w-full">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenSettingsTab('payments')}
+                        className="text-xs text-blue-600 hover:underline font-semibold flex items-center justify-center gap-1.5 mx-auto cursor-pointer"
+                      >
+                        <i className="fa-solid fa-gear text-xs"></i>
+                        <span>Quản lý tài khoản ngân hàng trong Cài đặt</span>
+                      </button>
                     </div>
                   </div>
                 )}
