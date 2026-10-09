@@ -3,9 +3,48 @@ import { PayPalScriptProvider, PayPalButtons } from '@paypal/react-paypal-js';
 import { CartItem, CheckoutFormState, Currency, Order, User, ShippingAddress } from '../types';
 import { getBackendBaseUrl } from '../api/serverAuth';
 import { createVnpayPaymentApi } from '../api/payment';
+import { QRCodeSVG } from 'qrcode.react';
 
 // PayPal không hỗ trợ VND → quy đổi sang USD theo tỷ giá này (giữ đồng bộ với backend vndPerUSD)
 const VND_PER_USD = 25000;
+
+// Tài khoản thụ hưởng cố định của shop (Vietcombank)
+const SHOP_BANK_BIN = '970436'; // Vietcombank
+const SHOP_BANK_ACC = '88992026888';
+
+// VietQR helpers — sinh chuỗi QR Napas 247 (động, kèm số tiền)
+function vietQRField(id: string, value: string): string {
+  return id + String(value.length).padStart(2, '0') + value;
+}
+
+function vietQRCrc16(str: string): string {
+  let crc = 0xffff;
+  for (let i = 0; i < str.length; i++) {
+    crc ^= str.charCodeAt(i) << 8;
+    for (let j = 0; j < 8; j++) {
+      crc = crc & 0x8000 ? ((crc << 1) ^ 0x1021) & 0xffff : (crc << 1) & 0xffff;
+    }
+  }
+  return crc.toString(16).toUpperCase().padStart(4, '0');
+}
+
+// buildVietQR — QR chuyển khoản đúng số tiền (đơn vị VND, làm tròn đồng)
+function buildVietQR(bankBin: string, account: string, amountVND: number, note: string): string {
+  const merchant =
+    vietQRField('00', 'A000000727') +
+    vietQRField('01', vietQRField('00', bankBin) + vietQRField('01', account));
+  const payload =
+    vietQRField('00', '01') +
+    vietQRField('01', '12') + // 12 = QR động (có số tiền)
+    vietQRField('38', merchant) +
+    vietQRField('52', '0000') +
+    vietQRField('53', '704') + // VND
+    vietQRField('54', String(Math.max(0, Math.round(amountVND)))) +
+    vietQRField('58', 'VN') +
+    vietQRField('62', vietQRField('08', note.slice(0, 25))) +
+    '6304';
+  return payload + vietQRCrc16(payload);
+}
 
 interface CheckoutViewProps {
   cart: CartItem[];
@@ -1060,10 +1099,14 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                     )}
 
                     <div className="bg-slate-50 p-6 border border-slate-200 rounded-xl flex flex-col items-center gap-4 text-center">
-                      <div className="w-32 h-32 bg-white border border-slate-200 flex flex-col items-center justify-center p-2 rounded-lg shadow-xs">
-                        <i className="fa-solid fa-qrcode text-slate-400 text-5xl"></i>
-                        <span className="text-[10px] text-slate-400 uppercase font-bold mt-1">
-                          BIBLIOTHECA QR
+                      <div className="bg-white border border-slate-200 p-3 rounded-lg shadow-xs">
+                        <QRCodeSVG
+                          value={buildVietQR(SHOP_BANK_BIN, SHOP_BANK_ACC, totalVND, 'BOKO THANH TOAN')}
+                          size={168}
+                          level="M"
+                        />
+                        <span className="block text-[10px] text-slate-500 uppercase font-bold mt-2">
+                          BIBLIOTHECA QR • {totalVND.toLocaleString('vi-VN')} ₫
                         </span>
                       </div>
                       <div className="text-xs text-slate-700 space-y-1">
