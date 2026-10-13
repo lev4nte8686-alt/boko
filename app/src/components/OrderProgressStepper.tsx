@@ -31,6 +31,7 @@ export const OrderProgressStepper: React.FC<OrderProgressStepperProps> = ({
   // Vận đơn GHN đang quản lý đơn hàng (sau khi đã đóng gói)
   const [shipment, setShipment] = useState<Shipment | null>(null);
   const [journey, setJourney] = useState<GHNJourneyStage[]>([]);
+  const [ghnTestMode, setGhnTestMode] = useState(false);
   const [isLoadingShipment, setIsLoadingShipment] = useState(false);
   const [isSyncingShipment, setIsSyncingShipment] = useState(false);
 
@@ -54,6 +55,7 @@ export const OrderProgressStepper: React.FC<OrderProgressStepperProps> = ({
         if (synced?.shipment) {
           setShipment(synced.shipment);
           setJourney(synced.journey || []);
+          setGhnTestMode(!!synced.ghn_test_mode);
           return;
         }
       }
@@ -61,6 +63,7 @@ export const OrderProgressStepper: React.FC<OrderProgressStepperProps> = ({
       const res = await getOrderShipmentApi(orderId).catch(() => null);
       setShipment(res?.shipment || null);
       setJourney(res?.journey || []);
+      setGhnTestMode(!!res?.ghn_test_mode);
     } catch (err) {
       console.warn('Không lấy được thông tin vận đơn GHN:', err);
     } finally {
@@ -308,16 +311,22 @@ export const OrderProgressStepper: React.FC<OrderProgressStepperProps> = ({
               <i className={`fa-solid fa-rotate ${isSyncingShipment ? 'fa-spin' : ''}`}></i>
               {isSyncingShipment ? 'Đang đồng bộ...' : 'Làm mới trạng thái từ GHN'}
             </button>
-            {shipment.order_code && (
+            {shipment.order_code && !ghnTestMode && (
               <a
-                href={`https://ghn.dev/tra-cuu-van-don?order_code=${encodeURIComponent(shipment.order_code)}`}
+                href="https://ghn.vn/"
                 target="_blank"
                 rel="noreferrer"
                 className="text-[11px] font-bold text-slate-600 hover:text-slate-800 flex items-center gap-1.5"
+                title="Mở trang ghn.vn rồi nhập mã vận đơn vào ô tra cứu"
               >
                 <i className="fa-solid fa-up-right-from-square"></i>
                 Tra cứu trên trang GHN
               </a>
+            )}
+            {ghnTestMode && (
+              <p className="text-[11px] text-slate-500 italic">
+                Đơn chạy trên môi trường test của GHN nên tra cứu hành trình ngay tại đây — mã này chưa có trên trang ghn.vn công khai.
+              </p>
             )}
           </div>
 

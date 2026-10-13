@@ -272,11 +272,19 @@ func ghnTrackingPayload(order models.Order, shipment models.Shipment) gin.H {
 		history = append(history, services.GHNEventInput{Status: e.Status, At: e.CreatedAt})
 	}
 
+	cfg := services.GetGHNConfig()
+	isTest := strings.Contains(strings.ToLower(cfg.BaseURL), "dev-") ||
+		strings.Contains(strings.ToLower(cfg.BaseURL), "staging") ||
+		strings.Contains(strings.ToLower(cfg.BaseURL), "test")
+
 	return gin.H{
 		"shipment":     shipment,
 		"history":      events,
 		"journey":      services.BuildGHNJourney(shipment.Status, history),
 		"order_status": order.Status,
+		// Đơn test (gateway staging) không tồn tại trên trang GHN production —
+		// UI dùng cờ này để hướng dẫn tra cứu ngay trong Boko.
+		"ghn_test_mode": isTest,
 	}
 }
 

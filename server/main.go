@@ -59,16 +59,27 @@ func main() {
 	}))
 
 	// CORS — cho phép React frontend (localhost:3000)
+	// Khi deploy cloud (Vercel...), thêm origin qua biến môi trường CORS_ORIGINS,
+	// nhiều origin phân tách bằng dấu phẩy. Ví dụ:
+	//   CORS_ORIGINS=https://boko-web.vercel.app,https://boko.com
+	allowOrigins := []string{
+		"http://localhost:3000",   // local dev (Vite)
+		"http://127.0.0.1:3000",  // local dev (Vite)
+		"http://localhost",        // nginx HTTP (port 80)
+		"https://localhost",       // nginx HTTPS (port 443)
+		"http://localhost:80",     // nginx HTTP explicit
+		"https://localhost:443",   // nginx HTTPS explicit
+		"https://boko.com",
+	}
+	if extra := strings.TrimSpace(os.Getenv("CORS_ORIGINS")); extra != "" {
+		for _, o := range strings.Split(extra, ",") {
+			if o = strings.TrimSpace(o); o != "" {
+				allowOrigins = append(allowOrigins, o)
+			}
+		}
+	}
 	r.Use(cors.New(cors.Config{
-		AllowOrigins: []string{
-			"http://localhost:3000",   // local dev (Vite)
-			"http://127.0.0.1:3000",  // local dev (Vite)
-			"http://localhost",        // nginx HTTP (port 80)
-			"https://localhost",       // nginx HTTPS (port 443)
-			"http://localhost:80",     // nginx HTTP explicit
-			"https://localhost:443",   // nginx HTTPS explicit
-			"https://boko.com",
-		},
+		AllowOrigins:     allowOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		AllowCredentials: true,
@@ -80,8 +91,13 @@ func main() {
 	// Seed dữ liệu mẫu
 	seedData()
 
-	// Chạy server
-	r.Run(":8080")
+	// Chạy server — nền tảng cloud (Render...) cấp cổng qua biến môi trường
+	// PORT, local mặc định 8080.
+	port := strings.TrimSpace(os.Getenv("PORT"))
+	if port == "" {
+		port = "8080"
+	}
+	r.Run(":" + port)
 }
 
 // demoCatalogBooks — danh mục sách mẫu của frontend (app/src/data/books.ts).

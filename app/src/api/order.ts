@@ -249,6 +249,9 @@ export interface ShipmentApiResponse {
   }[];
   order_status?: string;
   message?: string;
+  // true khi đơn chạy trên gateway test của GHN (mã vận đơn test không có
+  // trên trang ghn.vn production — tra cứu ngay trong Boko)
+  ghn_test_mode?: boolean;
 }
 
 /**
