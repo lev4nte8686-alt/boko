@@ -106,7 +106,10 @@ func main() {
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     allowOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+		// X-Idempotency-Key: checkout COD/ATM gửi kèm để chống tạo đơn trùng.
+		// Nếu KHÔNG khai báo ở đây, preflight sẽ bị browser chặn và fetch ném
+		// "TypeError: Failed to fetch" (đúng lỗi checkout trước đây).
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "Accept", "X-Idempotency-Key", "X-Requested-With", "X-Tracking-Token"},
 		AllowCredentials: true,
 	}))
 
