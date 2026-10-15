@@ -197,6 +197,25 @@ export const Header: React.FC<HeaderProps> = ({
 
                   {/* Menu Options */}
                   <div className="py-1.5 space-y-0.5">
+                    {/* Bảng điều khiển (chỉ seller/admin) */}
+                    {(user.role === 'seller' || user.role === 'admin') && (
+                      <button
+                        onClick={() => {
+                          setIsUserMenuOpen(false);
+                          navigate('/dashboard');
+                        }}
+                        data-testid="header-dashboard-link"
+                        className="w-full text-left px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-violet-50 hover:text-violet-950 flex items-center gap-2.5 transition-colors cursor-pointer group"
+                      >
+                        <i className="fa-solid fa-gauge-high text-sm text-violet-600 group-hover:text-violet-800 w-4 text-center"></i>
+                        <div className="flex-1">
+                          <span className="font-bold block text-slate-900">Bảng điều khiển</span>
+                          <span className="text-[10px] text-slate-400 block font-normal">Quản lý sách, đơn hàng, mã giảm giá</span>
+                        </div>
+                        <i className="fa-solid fa-chevron-right text-[10px] text-slate-400"></i>
+                      </button>
+                    )}
+
                     {/* Cài đặt (Chung / Thông tin cơ bản) */}
                     <button
                       onClick={() => handleOpenSettingTab('profile')}

@@ -18,7 +18,13 @@ import { LoginPage } from './pages/LoginPage';
 import { PaypalCallback } from './pages/PaypalCallback';
 import { MomoCallback } from './pages/MomoCallback';
 import { VnpayCallback } from './pages/VnpayCallback';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
+import { InvoicePage } from './pages/InvoicePage';
+import { TermsPage, PrivacyPage, ReturnsPage, ContactPage } from './pages/LegalPages';
+import { DashboardPage } from './pages/DashboardPage';
+import { Footer } from './components/Footer';
 import { RequireAuth } from './components/RequireAuth';
+import { RequireRole } from './components/RequireRole';
 import { getStoredAuthUser, getStoredAuthToken, logoutApi, serverUpdateProfile } from './api/auth';
 import { isBackendConfigured } from './api/serverAuth';
 import { fetchBooksFromBackend } from './api/catalog';
@@ -126,7 +132,24 @@ export default function App() {
     setIsSettingsOpen(true);
   };
 
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cart, setCart] = useState<CartItem[]>(() => {
+    // Giỏ hàng được lưu vào localStorage để không mất khi reload/điều hướng.
+    try {
+      const raw = localStorage.getItem('boko_cart');
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? (parsed as CartItem[]) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('boko_cart', JSON.stringify(cart));
+    } catch (e) {
+      console.warn('Không lưu được giỏ hàng vào localStorage:', e);
+    }
+  }, [cart]);
 
   // Modals state
   const [selectedBookForReader, setSelectedBookForReader] = useState<Book | null>(null);
@@ -280,7 +303,7 @@ export default function App() {
   const totalCartItemsCount = cart.reduce((acc, item) => acc + item.quantity, 0);
 
   // Check if current route is auth page
-  const isAuthRoute = location.pathname === '/login' || location.pathname === '/register' || location.pathname === '/signup';
+  const isAuthRoute = location.pathname === '/login' || location.pathname === '/register' || location.pathname === '/signup' || location.pathname === '/reset-password';
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-body flex flex-col selection:bg-blue-600 selection:text-white">
@@ -416,6 +439,18 @@ export default function App() {
           }
         />
 
+        {/* Bảng điều khiển Người bán / Quản trị (chỉ seller/admin) */}
+        <Route
+          path="/dashboard"
+          element={
+            <RequireAuth user={user}>
+              <RequireRole user={user} allow={['seller', 'admin']}>
+                <DashboardPage user={user} />
+              </RequireRole>
+            </RequireAuth>
+          }
+        />
+
         {/* Payment Callback Route for MoMo Sandbox */}
         <Route
           path="/payment/momo-callback"
@@ -477,6 +512,18 @@ export default function App() {
             />
           }
         />
+
+        {/* Trang pháp lý (công khai, không cần đăng nhập) */}
+        <Route path="/terms" element={<TermsPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
+        <Route path="/returns" element={<ReturnsPage />} />
+        <Route path="/contact" element={<ContactPage />} />
+
+        {/* Đặt lại mật khẩu (mở từ link trong email) */}
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+
+        {/* Hoá đơn in được (chủ đơn đăng nhập, hoặc khách có ?key=tracking) */}
+        <Route path="/invoice/:orderId" element={<InvoicePage />} />
 
         {/* Catch-all fallback Route -> If user not logged in, show RequireAuth; else redirect to / */}
         <Route
@@ -552,6 +599,12 @@ export default function App() {
           setIsOrderSuccessOpen(false);
           handleOpenSettings('orders');
         }}
+        onOpenInvoice={() => {
+          const invoiceId = completedOrder?.dbId || completedOrder?.id;
+          if (!invoiceId) return;
+          setIsOrderSuccessOpen(false);
+          navigate(`/invoice/${invoiceId}`);
+        }}
       />
 
       {/* User Settings Modal (Basic info, Shipping address, Payment methods integration) */}
@@ -564,12 +617,7 @@ export default function App() {
       />
 
       {/* Footer (Shown on non-auth routes) */}
-      {!isAuthRoute && (
-        <footer className="w-full bg-white border-t border-slate-200 py-8 px-6 text-center text-xs text-slate-500 space-y-1 mt-auto">
-          <p className="font-display font-semibold text-slate-800">Boko • Nhà Sách Trực Tuyến</p>
-          <p>© 2026 Boko. Tất cả quyền được bảo lưu.</p>
-        </footer>
-      )}
+      {!isAuthRoute && <Footer />}
     </div>
   );
 }
