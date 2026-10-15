@@ -188,6 +188,11 @@ func main() {
 	// Huỷ tự động các đơn online treo (pending + unpaid) quá hạn, hoàn tồn kho.
 	services.StartPendingOrderReaper()
 
+	// Cảnh báo rõ khi tắt tự động chuyển đơn sang GHN (chỉ tạo vận đơn thật khi bấm tay).
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("GHN_AUTO_HANDOVER")), "false") {
+		log.Println("GHN: tự động chuyển đơn đang TẮT (GHN_AUTO_HANDOVER=false) — chỉ tạo vận đơn khi bấm tay")
+	}
+
 	// Chạy server — nền tảng cloud (Render...) cấp cổng qua biến môi trường
 	// PORT, local mặc định 8080.
 	port := strings.TrimSpace(os.Getenv("PORT"))

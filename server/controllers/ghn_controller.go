@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -34,11 +35,31 @@ type ghnHandoverRequest struct {
 	Note          string  `json:"note"`
 }
 
+// ghnAutoHandoverEnabled — có tự động đẩy đơn mới sang GHN (tạo vận đơn THẬT)
+// hay không. Mặc định BẬT. Đặt GHN_AUTO_HANDOVER=false để tạm KHÔNG tạo vận đơn
+// thật (vẫn dùng địa chỉ + phí GHN bình thường), chỉ chuyển khi người bán bấm tay.
+func ghnAutoHandoverEnabled() bool {
+	raw := strings.TrimSpace(os.Getenv("GHN_AUTO_HANDOVER"))
+	if raw == "" {
+		return true
+	}
+	switch strings.ToLower(raw) {
+	case "false", "0", "no", "off":
+		return false
+	default:
+		return true
+	}
+}
+
 // autoHandoverToGHNAsync — chuyển đơn mới cho GHN ở chế độ nền.
 // KHÔNG BAO GIỜ làm hỏng luồng tạo đơn: GHN lỗi chỉ log lại, người bán vẫn
 // bấm "Chuyển cho GHN" thủ công sau. Có retry vì đơn vừa tạo có thể chưa
 // commit xong khi goroutine chạy tới.
+// Bỏ qua hoàn toàn khi GHN_AUTO_HANDOVER=false.
 func autoHandoverToGHNAsync(orderID uint) {
+	if !ghnAutoHandoverEnabled() {
+		return
+	}
 	go func() {
 		time.Sleep(3 * time.Second)
 		for attempt := 1; attempt <= 3; attempt++ {
