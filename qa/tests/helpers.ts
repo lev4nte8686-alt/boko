@@ -18,6 +18,18 @@ export const QA_PASSWORD = process.env.QA_PASSWORD || 'Test@12345';
 export const QA_ADMIN_EMAIL = process.env.QA_ADMIN_EMAIL || 'admin@boko.com';
 export const QA_ADMIN_PASSWORD = process.env.QA_ADMIN_PASSWORD || 'Admin@12345';
 
+/**
+ * Backend base URL cho các lời gọi API bằng APIRequestContext.
+ * - Local (nginx https://localhost): '' → dùng đường dẫn tương đối (/api/...).
+ * - Prod (Vercel): /api/* trên Vercel trả về index.html (SPA rewrite) nên phải
+ *   trỏ thẳng tới backend Render. Override bằng env BACKEND_URL nếu khác.
+ */
+const BASE = (process.env.BASE_URL || '').trim();
+export const API_BASE = (!BASE || /localhost|127\.0\.0\.1/i.test(BASE)
+  ? ''
+  : (process.env.BACKEND_URL || 'https://boko-backend.onrender.com')
+).replace(/\/+$/, '');
+
 export const SEL = {
   emailInput: 'input[type="email"], input[placeholder*="test_user"]',
   passwordInput: 'input[type="password"]',
@@ -99,13 +111,13 @@ export async function fillContactIfEmpty(
  * (Vài tỉnh trong dữ liệu test rỗng nên không thể hard-code phần tử đầu tiên.)
  */
 export async function pickAddressChain(request: APIRequestContext) {
-  const provinces = (await (await request.get('/api/shipping/provinces')).json()).data || [];
+  const provinces = (await (await request.get(`${API_BASE}/api/shipping/provinces`)).json()).data || [];
   for (const p of provinces.slice(0, 20)) {
     const districts =
-      (await (await request.get(`/api/shipping/districts?province_id=${p.province_id}`)).json()).data || [];
+      (await (await request.get(`${API_BASE}/api/shipping/districts?province_id=${p.province_id}`)).json()).data || [];
     for (const d of districts.slice(0, 5)) {
       const wards =
-        (await (await request.get(`/api/shipping/wards?district_id=${d.district_id}`)).json()).data || [];
+        (await (await request.get(`${API_BASE}/api/shipping/wards?district_id=${d.district_id}`)).json()).data || [];
       if (wards.length) return { province: p as any, district: d as any, ward: wards[0] as any };
     }
   }
@@ -139,7 +151,7 @@ export async function selectShippingAddress(page: Page) {
 export async function cancelOrder(page: Page, orderId: number | string) {
   const token = await page.evaluate(() => localStorage.getItem('boko_auth_token'));
   if (!token) return;
-  await page.request.put(`/api/orders/${orderId}/cancel`, {
+  await page.request.put(`${API_BASE}/api/orders/${orderId}/cancel`, {
     headers: { Authorization: `Bearer ${token}` },
   });
 }

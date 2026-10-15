@@ -26,6 +26,11 @@ npm test
 
 Config tự bật `retries` + timeout dài khi `BASE_URL` là vercel/onrender (Render free cold-start ~30s).
 
+> Trên Vercel, `/api/*` bị rewrite về `index.html` (SPA) nên các lời gọi API bằng
+> `request`/`page.request` phải trỏ thẳng backend. `helpers.ts` tự dùng
+> `https://boko-backend.onrender.com` khi `BASE_URL` không phải localhost; đổi bằng
+> `$env:BACKEND_URL='https://...'` nếu backend ở host khác.
+
 ## Tài khoản
 
 | Môi trường | Email | Mật khẩu |
