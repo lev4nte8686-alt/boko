@@ -6,7 +6,6 @@ interface ShelfSectionProps {
   books: Book[];
   onSelectBook: (book: Book) => void;
   onAddToCart: (book: Book) => void;
-  onLoadMoreBooks: (category: string) => void;
   currency: Currency;
 }
 
@@ -15,7 +14,6 @@ export const ShelfSection: React.FC<ShelfSectionProps> = ({
   books,
   onSelectBook,
   onAddToCart,
-  onLoadMoreBooks,
   currency
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -25,15 +23,6 @@ export const ShelfSection: React.FC<ShelfSectionProps> = ({
       const scrollAmount = direction === 'left' ? -360 : 360;
       scrollContainerRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
     }
-  };
-
-  const handleLoadMore = () => {
-    onLoadMoreBooks(title);
-    setTimeout(() => {
-      if (scrollContainerRef.current) {
-        scrollContainerRef.current.scrollBy({ left: 600, behavior: 'smooth' });
-      }
-    }, 120);
   };
 
   return (
@@ -50,32 +39,21 @@ export const ShelfSection: React.FC<ShelfSectionProps> = ({
           </span>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5">
           {/* Scroll Controls */}
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={() => scroll('left')}
-              className="w-8 h-8 rounded-lg bg-amber-900/80 border border-amber-600/40 hover:bg-amber-800 text-amber-100 flex items-center justify-center transition-colors shadow-sm active:scale-95 cursor-pointer"
-              title="Cuộn sang trái"
-            >
-              <i className="fa-solid fa-chevron-left text-xs"></i>
-            </button>
-            <button
-              onClick={() => scroll('right')}
-              className="w-8 h-8 rounded-lg bg-amber-900/80 border border-amber-600/40 hover:bg-amber-800 text-amber-100 flex items-center justify-center transition-colors shadow-sm active:scale-95 cursor-pointer"
-              title="Cuộn sang phải"
-            >
-              <i className="fa-solid fa-chevron-right text-xs"></i>
-            </button>
-          </div>
-
-          {/* Load More Header Button - Icon only */}
           <button
-            onClick={handleLoadMore}
-            className="w-8 h-8 rounded-lg bg-amber-900/80 border border-amber-500/40 hover:bg-amber-800 text-amber-200 hover:text-amber-100 flex items-center justify-center transition-all shadow-sm active:scale-95 group cursor-pointer"
-            title="Xem thêm"
+            onClick={() => scroll('left')}
+            className="w-8 h-8 rounded-lg bg-amber-900/80 border border-amber-600/40 hover:bg-amber-800 text-amber-100 flex items-center justify-center transition-colors shadow-sm active:scale-95 cursor-pointer"
+            title="Cuộn sang trái"
           >
-            <i className="fa-solid fa-plus text-sm group-hover:rotate-90 transition-transform"></i>
+            <i className="fa-solid fa-chevron-left text-xs"></i>
+          </button>
+          <button
+            onClick={() => scroll('right')}
+            className="w-8 h-8 rounded-lg bg-amber-900/80 border border-amber-600/40 hover:bg-amber-800 text-amber-100 flex items-center justify-center transition-colors shadow-sm active:scale-95 cursor-pointer"
+            title="Cuộn sang phải"
+          >
+            <i className="fa-solid fa-chevron-right text-xs"></i>
           </button>
         </div>
       </div>
@@ -242,18 +220,6 @@ export const ShelfSection: React.FC<ShelfSectionProps> = ({
               </div>
             );
           })}
-
-          {/* End Horizontal Card: Square Insert / Load More Button vertically centered */}
-          <div
-            onClick={handleLoadMore}
-            className="book-wrapper flex-none w-[110px] h-[110px] md:w-[130px] md:h-[130px] aspect-square snap-start cursor-pointer group flex items-center justify-center self-center my-auto rounded-2xl bg-amber-950/60 border-2 border-dashed border-amber-500/40 hover:border-amber-300 hover:bg-amber-900/80 transition-all p-3 shadow-lg active:scale-95"
-            title="Thêm / Xem thêm sách"
-            aria-label="Thêm sách"
-          >
-            <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-amber-900/90 border border-amber-400/60 flex items-center justify-center text-amber-200 shadow-md group-hover:scale-110 group-hover:bg-amber-800 transition-all">
-              <i className="fa-solid fa-plus text-xl md:text-2xl text-amber-300"></i>
-            </div>
-          </div>
         </div>
 
         {/* Physical Wooden/Slate Shelf Beam Ledge with End Brackets */}

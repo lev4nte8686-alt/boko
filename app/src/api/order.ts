@@ -39,6 +39,8 @@ export interface CodOrderResponse {
   payment_method: string;
   payment_status: string;
   order?: any;
+  // Mã tra cứu cho khách vãng lai (xem trạng thái + hoá đơn không cần đăng nhập)
+  tracking_token?: string;
 }
 
 export interface OrderQuoteResponse {

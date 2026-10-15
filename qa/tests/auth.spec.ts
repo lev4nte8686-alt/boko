@@ -2,9 +2,17 @@ import { test, expect } from '@playwright/test';
 import { gotoLogin, loginOk, login, QA_EMAIL } from './helpers';
 
 test.describe('Xác thực (đăng nhập)', () => {
-  test('chưa đăng nhập vào "/" thì bị đẩy về /login', async ({ page }) => {
+  test('khách vãng lai xem được trang chủ (không còn bị đẩy về /login)', async ({ page }) => {
     await page.goto('/');
-    await expect(page).toHaveURL(/\/login/);
+    await expect(page).toHaveURL(/\/($|\?)/);
+    // Thấy tủ sách + nút đăng nhập mời khách
+    await expect(page.getByText('Tủ Sách Trực Tuyến Boko')).toBeVisible({ timeout: 20_000 });
+  });
+
+  test('khách vãng lai vào /checkout (giỏ trống) thấy trang thanh toán, không bị chặn', async ({ page }) => {
+    await page.goto('/checkout');
+    await expect(page).toHaveURL(/\/checkout/);
+    await expect(page.getByText(/Giỏ hàng đang trống/i)).toBeVisible({ timeout: 15_000 });
   });
 
   test('đăng nhập đúng -> vào trang chủ, có token', async ({ page }) => {

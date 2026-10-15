@@ -75,6 +75,26 @@ export async function addFirstBookAndCheckout(page: Page) {
 }
 
 /**
+ * Điền các trường liên hệ còn trống (form mặc định để trống để KHÔNG bịa dữ
+ * liệu). Dùng cho luồng khách vãng lai lẫn khách đã đăng nhập nhưng chưa lưu
+ * địa chỉ.
+ */
+export async function fillContactIfEmpty(
+  page: Page,
+  opts: { email?: string; name?: string; phone?: string; street?: string } = {}
+) {
+  const name = page.locator('#firstName');
+  const phone = page.locator('#telephone');
+  const street = page.locator('#streetAddress');
+  const email = page.locator('#email');
+
+  if (opts.email && !(await email.inputValue().catch(() => ''))) await email.fill(opts.email);
+  if (!(await name.inputValue().catch(() => ''))) await name.fill(opts.name || 'Nguyễn Văn Khách');
+  if (!(await phone.inputValue().catch(() => ''))) await phone.fill(opts.phone || '0912345678');
+  if (!(await street.inputValue().catch(() => ''))) await street.fill(opts.street || 'Số 1 Đường Sách');
+}
+
+/**
  * Tìm 1 chuỗi Tỉnh -> Quận -> Phường có dữ liệu thật từ master data GHN.
  * (Vài tỉnh trong dữ liệu test rỗng nên không thể hard-code phần tử đầu tiên.)
  */

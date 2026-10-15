@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { loginOk, addFirstBookAndCheckout, cancelOrder, SEL } from './helpers';
+import { loginOk, addFirstBookAndCheckout, cancelOrder, fillContactIfEmpty, SEL } from './helpers';
 
 /**
  * Luong quan trong nhat: dat hang COD.
@@ -11,9 +11,8 @@ test.describe('Checkout COD', () => {
     await loginOk(page);
     await addFirstBookAndCheckout(page);
 
-    // Cac truong bat buoc da duoc prefill
-    await expect(page.getByPlaceholder('Họ và Tên người nhận')).not.toHaveValue('');
-    await expect(page.getByPlaceholder('Số điện thoại nhận hàng')).not.toHaveValue('');
+    // Form KHÔNG tự bịa dữ liệu: điền thông tin liên hệ còn trống.
+    await fillContactIfEmpty(page);
 
     const [resp] = await Promise.all([
       page.waitForResponse(

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { addFirstBookAndCheckout, loginOk, SEL } from './helpers';
+import { addFirstBookAndCheckout, fillContactIfEmpty, loginOk, SEL } from './helpers';
 
 /**
  * p1-fixes.spec.ts — Chứng minh các vá P1 (dùng được đúng ở frontend):
@@ -35,6 +35,7 @@ test.describe('P1 — chặn phương thức thanh toán chưa hỗ trợ', () =
     await loginOk(page);
     await addFirstBookAndCheckout(page);
 
+    await fillContactIfEmpty(page);
     await page.locator('#payment-bank').check();
     await page.getByRole('button', SEL.submitBtn).click();
 

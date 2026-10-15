@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { Book, CartItem, Currency, Order, User, UsedBookListing } from './types';
-import { BOOKS_DATA, generateExtraBooks } from './data/books';
 import { INITIAL_USED_BOOKS } from './data/usedBooks';
 import { Header } from './components/Header';
 import { ShelfSection } from './components/ShelfSection';
@@ -49,8 +48,10 @@ export default function App() {
   const location = useLocation();
 
   const [currency, setCurrency] = useState<Currency>('VND');
-  const [booksList, setBooksList] = useState<Book[]>(BOOKS_DATA);
+  // Catalog lấy 100% từ backend (không còn dữ liệu mocks ở frontend).
+  const [booksList, setBooksList] = useState<Book[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isBooksLoaded, setIsBooksLoaded] = useState(false);
 
   useEffect(() => {
     // Làm sạch cache dữ liệu thẻ cũ khi khởi động (Fail-closed)
@@ -61,40 +62,32 @@ export default function App() {
     let isMounted = true;
 
     async function loadBooks() {
-      if (!isBackendConfigured()) return;
+      if (!isBackendConfigured()) {
+        setIsBooksLoaded(true);
+        return;
+      }
 
       try {
         // Backend free-tier có thể đang ngủ (cold start): thử lại vài lần
-        // trước khi chịu fallback về dữ liệu demo (id chuỗi, không mua được).
+        // trước khi chịu để kệ trống.
         let backendBooks: Book[] = [];
         for (let attempt = 1; attempt <= 3; attempt++) {
           backendBooks = await fetchBooksFromBackend();
           if (backendBooks.length > 0) break;
           if (attempt < 3) await new Promise((r) => setTimeout(r, 8000));
         }
-        if (isMounted && backendBooks.length > 0) {
+        if (isMounted) {
           // Lọc bỏ sách fixture test để không hiển thị rác kiểm thử lên UI
-          const userFacingBackendBooks = backendBooks.filter(
-            (b) => !b.title.startsWith('MATRIX_') && !b.title.startsWith('STAGE2_') && !b.title.startsWith('S3_')
+          setBooksList(
+            backendBooks.filter(
+              (b) => !b.title.startsWith('MATRIX_') && !b.title.startsWith('STAGE2_') && !b.title.startsWith('S3_')
+            )
           );
-
-          // Hợp nhất backend books với danh mục mock BOOKS_DATA để đảm bảo
-          // TẤT CẢ các kệ sách (Mystery, Literature, History, Science, Art) đều hiển thị đầy đủ.
-          // Sách mock có tiêu đề trùng với bản ghi backend thì bị loại để không hiện hai lần
-          // (backend đã seed danh mục demo → mọi cuốn trên kệ đều mua được qua COD).
-          setBooksList(() => {
-            const backendMap = new Map(userFacingBackendBooks.map((b) => [String(b.id), b]));
-            const backendTitles = new Set(
-              userFacingBackendBooks.map((b) => b.title.trim().toLowerCase())
-            );
-            const remainingMock = BOOKS_DATA.filter(
-              (mb) => !backendMap.has(String(mb.id)) && !backendTitles.has(mb.title.trim().toLowerCase())
-            );
-            return [...userFacingBackendBooks, ...remainingMock];
-          });
+          setIsBooksLoaded(true);
         }
       } catch (error) {
         console.warn('Failed to load books from backend:', error);
+        if (isMounted) setIsBooksLoaded(true);
       }
     }
 
@@ -170,19 +163,6 @@ export default function App() {
   const displayedBooks = selectedBrandId
     ? booksList.filter((b) => b.brandId === selectedBrandId)
     : booksList;
-
-  // Load 10 additional books horizontally into a specific category without filtering out other shelves
-  const handleLoadMoreBooks = (category: string) => {
-    const currentCategoryCount = booksList.filter((b) => b.category === category).length;
-    const newBooks = generateExtraBooks(category, currentCategoryCount, 10);
-
-    setBooksList((prev) => [...prev, ...newBooks]);
-
-    setToastMessage(`Đã thêm 10 cuốn sách mới vào kệ ${category}!`);
-    setTimeout(() => {
-      setToastMessage(null);
-    }, 3500);
-  };
 
   // Cart operations
   const handleAddToCart = (book: Book) => {
@@ -323,66 +303,85 @@ export default function App() {
 
       {/* Main Body with Routes */}
       <Routes>
-        {/* Home / Library Route - Redirects to /login if not authenticated, otherwise renders home */}
+        {/* Home / Library Route — xem tự do, không bắt buộc đăng nhập.
+            Khách vãng lai xem kệ, thêm giỏ và đặt COD được; chỉ khi cần lưu
+            thông tin/địa chỉ/tra đơn theo tài khoản mới cần đăng nhập. */}
         <Route
           path="/"
           element={
-            !user ? (
-              <Navigate to="/login" replace />
-            ) : (
-              <main className="flex-1 pt-6 pb-20 w-full animate-fadeIn">
-                {/* Welcome / Brand Banner */}
-                <div className="max-w-[1600px] mx-auto px-6 md:px-12 mb-6 text-center md:text-left flex flex-col md:flex-row justify-between items-start md:items-end gap-6 border-b border-slate-200/80 pb-6">
-                  <div>
-                    <span className="font-label-caps text-xs uppercase tracking-widest text-slate-400 font-bold block mb-1">
-                      BOKO MALL • TỦ SÁCH TRỰC TUYẾN
-                    </span>
-                    <h1 className="font-display font-bold text-3xl md:text-4xl text-slate-900 tracking-tight mb-2">
-                      Tủ Sách Trực Tuyến Boko
-                    </h1>
-                    <p className="font-body text-sm md:text-base text-slate-500 max-w-2xl font-normal leading-relaxed">
-                      Khám phá các tác phẩm tuyển chọn từ các Nhà xuất bản & Chuỗi nhà sách hàng đầu trên kiến trúc tủ sách 3D sống động.
-                    </p>
-                  </div>
+            <main className="flex-1 pt-6 pb-20 w-full animate-fadeIn">
+              {/* Welcome / Brand Banner */}
+              <div className="max-w-[1600px] mx-auto px-6 md:px-12 mb-6 text-center md:text-left flex flex-col md:flex-row justify-between items-start md:items-end gap-6 border-b border-slate-200/80 pb-6">
+                <div>
+                  <span className="font-label-caps text-xs uppercase tracking-widest text-slate-400 font-bold block mb-1">
+                    BOKO MALL • TỦ SÁCH TRỰC TUYẾN
+                  </span>
+                  <h1 className="font-display font-bold text-3xl md:text-4xl text-slate-900 tracking-tight mb-2">
+                    Tủ Sách Trực Tuyến Boko
+                  </h1>
+                  <p className="font-body text-sm md:text-base text-slate-500 max-w-2xl font-normal leading-relaxed">
+                    Khám phá các tác phẩm tuyển chọn từ các Nhà xuất bản & Chuỗi nhà sách hàng đầu trên kiến trúc tủ sách 3D sống động.
+                  </p>
                 </div>
+                {!user && (
+                  <button
+                    onClick={() => navigate('/login')}
+                    className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg shadow-amber-600/20 transition-all cursor-pointer flex items-center gap-2"
+                  >
+                    <i className="fa-solid fa-right-to-bracket text-sm"></i>
+                    <span>Đăng nhập / Đăng ký</span>
+                  </button>
+                )}
+              </div>
 
-                {/* Mall Storefronts Bar */}
-                <MallBar
-                  selectedBrandId={selectedBrandId}
-                  onSelectBrand={(brandId) => setSelectedBrandId(brandId)}
-                  filteredBooksCount={displayedBooks.length}
-                />
+              {isBooksLoaded && displayedBooks.length === 0 ? (
+                <div className="max-w-[1600px] mx-auto px-6 md:px-12 py-20 text-center text-slate-500">
+                  <i className="fa-solid fa-book-open text-4xl text-slate-300 mb-4 block"></i>
+                  <p className="font-body text-sm">
+                    {isBackendConfigured()
+                      ? 'Chưa có sách nào trong hệ thống.'
+                      : 'Chưa kết nối được kho sách nên tủ sách tạm thời trống.'}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* Mall Storefronts Bar */}
+                  <MallBar
+                    selectedBrandId={selectedBrandId}
+                    onSelectBrand={(brandId) => setSelectedBrandId(brandId)}
+                    filteredBooksCount={displayedBooks.length}
+                  />
 
-                {/* Render Shelves inside 3D Bookcase Cabinet Frame */}
-                <BookcaseCabinet
-                  activeCategoryFilter={activeCategoryFilter}
-                  onSelectCategory={(category) => setActiveCategoryFilter(category)}
-                  categories={categories}
-                  totalBooksCount={displayedBooks.length}
-                  selectedBrandId={selectedBrandId}
-                  onSelectBrand={(brandId) => setSelectedBrandId(brandId)}
-                >
-                  {categories
-                    .filter((cat) => activeCategoryFilter === null || activeCategoryFilter === cat)
-                    .map((cat) => {
-                      const categoryBooks = displayedBooks.filter((b) => b.category === cat);
-                      if (categoryBooks.length === 0) return null;
+                  {/* Render Shelves inside 3D Bookcase Cabinet Frame */}
+                  <BookcaseCabinet
+                    activeCategoryFilter={activeCategoryFilter}
+                    onSelectCategory={(category) => setActiveCategoryFilter(category)}
+                    categories={categories}
+                    totalBooksCount={displayedBooks.length}
+                    selectedBrandId={selectedBrandId}
+                    onSelectBrand={(brandId) => setSelectedBrandId(brandId)}
+                  >
+                    {categories
+                      .filter((cat) => activeCategoryFilter === null || activeCategoryFilter === cat)
+                      .map((cat) => {
+                        const categoryBooks = displayedBooks.filter((b) => b.category === cat);
+                        if (categoryBooks.length === 0) return null;
 
-                      return (
-                        <ShelfSection
-                          key={cat}
-                          title={cat}
-                          books={categoryBooks}
-                          onSelectBook={handleSelectBook}
-                          onAddToCart={handleAddToCart}
-                          onLoadMoreBooks={handleLoadMoreBooks}
-                          currency={currency}
-                        />
-                      );
-                    })}
-                </BookcaseCabinet>
-              </main>
-            )
+                        return (
+                          <ShelfSection
+                            key={cat}
+                            title={cat}
+                            books={categoryBooks}
+                            onSelectBook={handleSelectBook}
+                            onAddToCart={handleAddToCart}
+                            currency={currency}
+                          />
+                        );
+                      })}
+                  </BookcaseCabinet>
+                </>
+              )}
+            </main>
           }
         />
 
@@ -411,31 +410,32 @@ export default function App() {
           }
         />
 
-        {/* Checkout Route - Protected with RequireAuth */}
+        {/* Checkout Route — KHÁCH VÃNG LAI cũng đặt được (COD / cổng thanh toán).
+            Backend tự xử lý cả 2 trường hợp (AuthOptional), đơn của khách lấy
+            theo email + mã tra cứu. */}
         <Route
           path="/checkout"
           element={
-            <RequireAuth user={user}>
-              <CheckoutView
-                cart={cart}
-                currency={currency}
-                onReturnToCart={() => {
-                  navigate('/');
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                }}
-                onOrderPlaced={handleOrderPlaced}
-                appliedDiscountCode={appliedDiscountCode}
-                onApplyDiscountCode={handleApplyDiscountCode}
-                user={user}
-                onOpenSettings={handleOpenSettings}
-                onOpenProfile={() => handleOpenSettings('profile')}
-                onSaveAddressToProfile={(address) => {
-                  if (user) {
-                    handleUpdateUser({ ...user, shippingAddress: address });
-                  }
-                }}
-              />
-            </RequireAuth>
+            <CheckoutView
+              cart={cart}
+              currency={currency}
+              onReturnToCart={() => {
+                navigate('/');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              onRequireLogin={() => navigate('/login', { state: { from: '/checkout' } })}
+              onOrderPlaced={handleOrderPlaced}
+              appliedDiscountCode={appliedDiscountCode}
+              onApplyDiscountCode={handleApplyDiscountCode}
+              user={user}
+              onOpenSettings={handleOpenSettings}
+              onOpenProfile={() => handleOpenSettings('profile')}
+              onSaveAddressToProfile={(address) => {
+                if (user) {
+                  handleUpdateUser({ ...user, shippingAddress: address });
+                }
+              }}
+            />
           }
         />
 
@@ -525,19 +525,8 @@ export default function App() {
         {/* Hoá đơn in được (chủ đơn đăng nhập, hoặc khách có ?key=tracking) */}
         <Route path="/invoice/:orderId" element={<InvoicePage />} />
 
-        {/* Catch-all fallback Route -> If user not logged in, show RequireAuth; else redirect to / */}
-        <Route
-          path="*"
-          element={
-            user ? (
-              <Navigate to="/" replace />
-            ) : (
-              <RequireAuth user={user}>
-                <div />
-              </RequireAuth>
-            )
-          }
-        />
+        {/* Catch-all fallback Route -> quay về tủ sách */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 
       {/* Toast Notification for Shelf Expansion / Actions */}
@@ -580,9 +569,9 @@ export default function App() {
       <SearchModal
         isOpen={isSearchOpen}
         onClose={() => setIsSearchOpen(false)}
-        books={booksList}
         onSelectBook={handleSelectBook}
         currency={currency}
+        isBackendReady={isBackendConfigured()}
       />
 
       {/* Order Success Modal */}
@@ -595,15 +584,22 @@ export default function App() {
           navigate('/');
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }}
-        onOpenOrders={() => {
-          setIsOrderSuccessOpen(false);
-          handleOpenSettings('orders');
-        }}
+        onOpenOrders={
+          user
+            ? () => {
+                setIsOrderSuccessOpen(false);
+                handleOpenSettings('orders');
+              }
+            : undefined
+        }
         onOpenInvoice={() => {
           const invoiceId = completedOrder?.dbId || completedOrder?.id;
           if (!invoiceId) return;
           setIsOrderSuccessOpen(false);
-          navigate(`/invoice/${invoiceId}`);
+          // Khách vãng lai (và cả khách có tài khoản) đều tra cứu được hoá đơn
+          // bằng mã tra cứu nhận sau khi đặt hàng.
+          const key = completedOrder?.trackingToken;
+          navigate(key ? `/invoice/${invoiceId}?key=${encodeURIComponent(key)}` : `/invoice/${invoiceId}`);
         }}
       />
 

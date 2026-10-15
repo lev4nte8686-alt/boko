@@ -86,6 +86,25 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({
           </p>
         </div>
 
+        {/* Mã tra cứu cho khách vãng lai (và cho khách nào cần tra lại) */}
+        {order.trackingToken && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-2" data-testid="order-tracking-token">
+            <div className="flex items-center gap-2 text-amber-800">
+              <i className="fa-solid fa-key text-sm"></i>
+              <span className="font-label-caps text-[11px] uppercase tracking-widest font-bold">
+                Mã tra cứu đơn hàng
+              </span>
+            </div>
+            <p className="font-mono text-sm font-bold text-slate-900 break-all select-all">
+              {order.trackingToken}
+            </p>
+            <p className="font-body text-xs text-amber-800/80 leading-relaxed">
+              Hãy lưu lại mã này. Bạn có thể mở hoá đơn và tra cứu trạng thái đơn bằng
+              mã này mà <strong>không cần đăng nhập</strong>.
+            </p>
+          </div>
+        )}
+
         {/* Item List */}
         <div className="space-y-3 border-t border-b border-slate-200 py-4">
           <h3 className="font-display font-bold text-sm text-slate-900 uppercase tracking-wider">

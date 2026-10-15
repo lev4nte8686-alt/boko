@@ -1,5 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
-import { loginOk, addFirstBookAndCheckout, SEL } from './helpers';
+import { loginOk, addFirstBookAndCheckout, fillContactIfEmpty, SEL } from './helpers';
 
 /**
  * Kiem tra cac cong thanh toan KHAC (MoMo / VNPay / PayPal / ATM).
@@ -77,6 +77,8 @@ test.describe('Cổng thanh toán (sandbox)', () => {
     await page.route(GATEWAY_HOSTS, (r) => r.abort());
     await loginOk(page);
     await addFirstBookAndCheckout(page);
+    // Form không tự bịa dữ liệu -> điền thông tin liên hệ trước khi submit.
+    await fillContactIfEmpty(page);
   });
 
   test('MoMo: tạo phiên trả về pay_url', async ({ page }) => {

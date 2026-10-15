@@ -15,6 +15,49 @@ export async function fetchBooksFromBackend(): Promise<Book[]> {
   return (payload as any[]).map(normalizeBook);
 }
 
+/**
+ * Tìm kiếm sách PHÍA SERVER.
+ *
+ * Frontend không còn giữ bản sao catalog để lọc cục bộ nữa (đã bỏ dữ liệu
+ * mocks): mọi kết quả đều đến từ endpoint và backend tự tra theo title/author
+ * bằng ILIKE nên lọc được cả khi tổng số sách lớn hơn số lượng đã tải.
+ */
+export async function searchBooksApi(
+  query: string,
+  limit = 20
+): Promise<{ books: Book[]; total: number; ok: boolean }> {
+  const trimmed = query.trim();
+  if (!trimmed) return { books: [], total: 0, ok: true };
+
+  const response = await safeFetchJson<{ data?: any[]; total?: number }>(
+    `/api/books?search=${encodeURIComponent(trimmed)}&limit=${limit}&sort=newest`
+  );
+  if (!response.ok || !response.data) {
+    if (response.error) {
+      console.log('Search error: ', response.error.toString());
+    }
+    return { books: [], total: 0, ok: false };
+  }
+
+  const payload = Array.isArray(response.data) ? response.data : response.data.data ?? [];
+  const total = Number(response.data.total);
+  return {
+    books: (payload as any[]).map(normalizeBook),
+    total: Number.isFinite(total) ? total : payload.length,
+    ok: true,
+  };
+}
+
+/**
+ * Sách nổi bật — dùng làm gợi ý trong ô tìm kiếm khi chưa gõ gì.
+ */
+export async function fetchLatestBooksApi(limit = 8): Promise<Book[]> {
+  const response = await safeFetchJson<{ data?: any[] }>(`/api/books?limit=${limit}&sort=newest`);
+  if (!response.ok || !response.data) return [];
+  const payload = Array.isArray(response.data) ? response.data : response.data.data ?? [];
+  return (payload as any[]).map(normalizeBook);
+}
+
 export async function fetchBookDetailFromBackend(id: string | number): Promise<Book | null> {
   const response = await safeFetchJson<{ data?: { book?: any; reviews?: any[] } }>(`/api/books/${id}`);
   if (!response.ok || !response.data) return null;

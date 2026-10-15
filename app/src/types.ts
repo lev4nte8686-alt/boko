@@ -156,6 +156,9 @@ export interface Order {
   shippingAddress?: string;
   phone?: string;
   shipment?: Shipment | null;
+  // Mã tra cứu đơn cho khách vãng lai (không đăng nhập): mở hoá đơn / tra cứu
+  // trạng thái bằng /invoice/:id?key=<trackingToken>. Không đoán được.
+  trackingToken?: string;
 }
 
 // Vận đơn giao cho hãng thứ 3 (GHN) quản lý sau khi đơn đã đóng gói

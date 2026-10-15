@@ -67,6 +67,8 @@ interface CheckoutViewProps {
   appliedDiscountCode: string;
   onApplyDiscountCode: (code: string) => boolean | Promise<boolean>;
   user?: User | null;
+  // Khách vãng lai bấm "thêm địa chỉ / lưu thẻ" => mời đăng nhập
+  onRequireLogin?: () => void;
   onOpenSettings?: (tab?: 'profile' | 'address' | 'payments') => void;
   onOpenProfile?: () => void;
   onSaveAddressToProfile?: (address: ShippingAddress) => void;
@@ -80,28 +82,29 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
   appliedDiscountCode,
   onApplyDiscountCode,
   user,
+  onRequireLogin,
   onOpenSettings,
   onOpenProfile,
   onSaveAddressToProfile
 }) => {
   const [formData, setFormData] = useState<CheckoutFormState>({
-    email: user?.email || 'customer@boko.com',
-    firstName: user?.shippingAddress?.fullName || user?.name || 'Albert Camus',
+    email: user?.email || '',
+    firstName: user?.shippingAddress?.fullName || user?.name || '',
     lastName: '',
     company: '',
-    address: user?.shippingAddress?.streetAddress || 'Rue Sébastien Bottin',
+    address: user?.shippingAddress?.streetAddress || '',
     apt: '',
-    city: user?.shippingAddress?.province || 'Hà Nội',
+    city: user?.shippingAddress?.province || '',
     country: 'Vietnam',
-    postalCode: '100000',
-    telephone: user?.shippingAddress?.phone || '0912 345 678',
-    province: user?.shippingAddress?.province || 'Hà Nội',
-    ward: user?.shippingAddress?.ward || 'Phường Bến Nghé',
-    streetAddress: user?.shippingAddress?.streetAddress || 'Số 123 Đường Đồng Khởi',
+    postalCode: '',
+    telephone: user?.shippingAddress?.phone || '',
+    province: user?.shippingAddress?.province || '',
+    ward: user?.shippingAddress?.ward || '',
+    streetAddress: user?.shippingAddress?.streetAddress || '',
     paymentMethod: 'cod',
-    cardNumber: '4532 •••• •••• 8892',
-    cardExpiry: '12/28',
-    cardCvv: '882',
+    cardNumber: '',
+    cardExpiry: '',
+    cardCvv: '',
     ewalletType: 'momo'
   });
 
@@ -131,6 +134,12 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
 
   // Handle open settings tab
   const handleOpenSettingsTab = (tab: 'profile' | 'address' | 'payments') => {
+    if (!user) {
+      // Khách vãng lai không có tài khoản để lưu thẻ/địa chỉ => mời đăng nhập
+      // thay vì mở bảng cài đặt rỗng.
+      onRequireLogin?.();
+      return;
+    }
     if (onOpenSettings) {
       onOpenSettings(tab);
     } else if (onOpenProfile) {
@@ -161,27 +170,9 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
   const [copiedBank, setCopiedBank] = useState<boolean>(false);
   const [formErrors, setFormErrors] = useState<string[]>([]);
 
-  // Default fallback book if cart is empty so user can test the exact checkout screen from Image 1!
-  const displayItems: CartItem[] =
-    cart.length > 0
-      ? cart
-      : [
-          {
-            book: {
-              id: 'camus-1',
-              title: "L'Étranger",
-              author: 'Albert Camus',
-              category: 'VĂN HỌC',
-              priceEUR: 24.0,
-              priceVND: 240000,
-              coverUrl:
-                'https://lh3.googleusercontent.com/aida-public/AB6AXuAMmrVi1HZtk0j2V8SVSuMmHBIUX0oNAHwkxVKk3q0h3zQQiRNTRbE-5N5Bwuhk8a1Cy0vpDMnZrIpZrx7LYQIj41lhJ6WW0hFpMWUMS-_dCJOMUqDWgl5JD31eyoLktacAZ81q668R300goQc7QRRI-YtcdZfCcQ5ePgjA9GHz0EqyWg0gZxzhJ3CeSbQQ3ZcCkAlYAfDC68av5rURiElgkcov58r30L9Bp6mQZ86SK8AGHMmccC-Z4w',
-              description: 'L\'Étranger by Albert Camus',
-              sampleChapters: { title: '', page1: [], page2: [], page3: [] }
-            },
-            quantity: 1
-          }
-        ];
+  // Không có giỏ hàng thì không có gì để thanh toán. Trước đây trang tự chèn
+  // một cuốn sách mẫu để "trang nhìn đẹp" — đã bỏ để không bán dữ liệu ảo.
+  const displayItems: CartItem[] = cart;
 
   // Price calculations
   const subtotalEUR = displayItems.reduce((acc, i) => acc + i.book.priceEUR * i.quantity, 0);
@@ -558,6 +549,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
     }
 
     let createdDbId: number | undefined;
+    let trackingToken: string | undefined;
     const orderStatus: 'shipping' | 'pending' = 'shipping';
     const paymentStatus: 'unpaid' | 'paid' = 'unpaid';
 
@@ -593,6 +585,8 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
 
         if (codRes && codRes.order_id) {
           createdDbId = codRes.order_id;
+          // Mã tra cứu cho khách vãng lai: mở hoá đơn / tra đơn không cần đăng nhập.
+          if (codRes.tracking_token) trackingToken = codRes.tracking_token;
           if (typeof codRes.total === 'number') {
             serverConfirmedTotal = codRes.total;
           }
@@ -642,6 +636,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
       paymentMethod: formData.paymentMethod,
       shippingAddress: buildShippingAddress() || 'Địa chỉ nhận sách Boko',
       phone: formData.telephone,
+      trackingToken
     };
 
     // Lưu vào localStorage danh sách boko_orders để đồng bộ tức thì
@@ -656,6 +651,33 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
 
     onOrderPlaced(newOrder);
   };
+
+  // Không làm đơn "ảo" khi giỏ trống: báo rõ và cho quay lại chọn sách.
+  if (cart.length === 0) {
+    return (
+      <div className="w-full min-h-screen bg-slate-50 text-slate-900 flex items-center justify-center px-6">
+        <div className="max-w-md w-full bg-white rounded-2xl border border-slate-200 shadow-sm p-8 text-center space-y-5">
+          <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-700 flex items-center justify-center mx-auto">
+            <i className="fa-solid fa-cart-shopping text-2xl"></i>
+          </div>
+          <div>
+            <h2 className="font-display font-bold text-xl text-slate-900">Giỏ hàng đang trống</h2>
+            <p className="font-body text-sm text-slate-500 mt-2">
+              Hãy chọn ít nhất một cuốn sách ở tủ sách rồi quay lại thanh toán nhé.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onReturnToCart}
+            className="w-full py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs uppercase tracking-widest shadow-md shadow-blue-200 transition-all cursor-pointer flex items-center justify-center gap-2"
+          >
+            <i className="fa-solid fa-book text-sm"></i>
+            <span>Về tủ sách</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full min-h-screen bg-slate-50 text-slate-900">
