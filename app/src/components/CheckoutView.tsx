@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CartItem, CheckoutFormState, CustomerOrderSummary, Currency, Order, User, ShippingAddress } from '../types';
 import { createMomoPaymentApi, createVnpayPaymentApi, createPaypalPaymentApi, VerifyAtmOtpResponse } from '../api/payment';
-import { createCodOrderApi } from '../api/order';
+import { createCodOrderApi, isNetworkFailure, warmUpBackend } from '../api/order';
 import { resolveBackendBookId } from '../api/catalog';
 import {
   fetchProvincesApi,
@@ -72,6 +72,15 @@ interface CheckoutViewProps {
   onOpenSettings?: (tab?: 'profile' | 'address' | 'payments') => void;
   onOpenProfile?: () => void;
   onSaveAddressToProfile?: (address: ShippingAddress) => void;
+}
+
+/** Thông báo lỗi thân thiện: tách lỗi mạng (cold start) khỏi lỗi nghiệp vụ. */
+function describeCheckoutError(err: unknown, fallback: string): string {
+  if (isNetworkFailure(err)) {
+    return 'Không kết nối được tới máy chủ Boko (có thể đang khởi động lại). Vui lòng chờ vài giây rồi thử lại.';
+  }
+  const msg = (err as Error)?.message;
+  return msg && msg.trim() ? msg : fallback;
 }
 
 export const CheckoutView: React.FC<CheckoutViewProps> = ({
@@ -400,6 +409,10 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
   const handleSubmitOrder = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Đánh thức backend (Render free-tier có thể đang "ngủ" sau ~15 phút) để
+    // lần submit không bị lỗi mạng "Failed to fetch".
+    await warmUpBackend().catch(() => {});
+
     // Basic validation
     const errors: string[] = [];
     if (!formData.email.trim()) errors.push('Vui lòng nhập Email');
@@ -484,7 +497,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
         }
       } catch (err: any) {
         setIsSubmittingMomo(false);
-        setFormErrors([err.message || 'Không thể tạo phiên thanh toán MoMo Sandbox. Vui lòng kiểm tra lại.']);
+        setFormErrors([describeCheckoutError(err, 'Không thể tạo phiên thanh toán MoMo Sandbox. Vui lòng kiểm tra lại.')]);
         return;
       }
     }
@@ -511,7 +524,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
         }
       } catch (err: any) {
         setIsSubmittingVnpay(false);
-        setFormErrors([err.message || 'Không thể tạo phiên thanh toán VNPAY Sandbox. Vui lòng kiểm tra lại.']);
+        setFormErrors([describeCheckoutError(err, 'Không thể tạo phiên thanh toán VNPAY Sandbox. Vui lòng kiểm tra lại.')]);
         return;
       }
     }
@@ -537,7 +550,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
         }
       } catch (err: unknown) {
         setIsSubmittingPaypal(false);
-        setFormErrors([(err as Error)?.message || 'Không thể tạo phiên thanh toán PayPal. Vui lòng kiểm tra lại.']);
+        setFormErrors([describeCheckoutError(err, 'Không thể tạo phiên thanh toán PayPal. Vui lòng kiểm tra lại.')]);
         return;
       }
     }
@@ -595,7 +608,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
         }
       } catch (err: any) {
         console.error('Lỗi lưu đơn COD vào backend:', err);
-        setFormErrors([err.message || 'Không thể tạo đơn hàng COD. Vui lòng kiểm tra lại.']);
+        setFormErrors([describeCheckoutError(err, 'Không thể tạo đơn hàng COD. Vui lòng kiểm tra lại.')]);
         return; // DỪNG TIẾN TRÌNH: TUYỆT ĐỐI KHÔNG FAKE SUCCESS!
       }
     }

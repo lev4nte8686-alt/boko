@@ -98,6 +98,58 @@ function getBackendBaseUrl(): string {
   return '';
 }
 
+/**
+ * Lỗi mạng (không tới được server) — KHÁC với lỗi HTTP từ server.
+ * Backend Render free-tier có thể "ngủ" (cold start) nên lần gọi đầu dễ ném
+ * `TypeError: Failed to fetch`. Ta tách riêng để retry và báo lỗi thân thiện.
+ */
+export function isNetworkFailure(err: unknown): boolean {
+  const msg = (err as Error)?.message || String(err || '');
+  return /failed to fetch|networkerror|load failed|network request failed|quá thời gian|timeout|aborted/i.test(
+    msg
+  );
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Gọi fetch, tự thử lại khi lỗi MẠNG (cold start). Chỉ dùng cho request
+ * idempotent (ví dụ tạo đơn COD đã kèm X-Idempotency-Key) — KHÔNG dùng cho
+ * tạo phiên cổng thanh toán (tránh tạo đơn trùng).
+ */
+async function fetchWithRetry(url: string, options: RequestInit, retries = 2): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fetch(url, options);
+    } catch (err) {
+      lastError = err;
+      if (attempt < retries && isNetworkFailure(err)) {
+        await sleep(1500 * (attempt + 1));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastError;
+}
+
+/**
+ * "Đánh thức" backend trước khi gửi yêu cầu quan trọng (ví dụ lúc bấm đặt hàng).
+ * Render free-tier ngủ sau ~15 phút; gọi sớm để lần submit không bị Failed to fetch.
+ */
+export async function warmUpBackend(): Promise<void> {
+  const baseUrl = getBackendBaseUrl();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await fetch(`${baseUrl}/api/pricing`, { method: 'GET', headers: { Accept: 'application/json' } });
+      return;
+    } catch {
+      await sleep(2000 * (attempt + 1));
+    }
+  }
+}
+
 function authHeaders(): Record<string, string> {
   const token = getAuthToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -118,7 +170,7 @@ export async function createCodOrderApi(params: CreateCodOrderParams): Promise<C
     headers['X-Idempotency-Key'] = params.idempotencyKey;
   }
 
-  const response = await fetch(`${baseUrl}/api/orders/cod/create`, {
+  const response = await fetchWithRetry(`${baseUrl}/api/orders/cod/create`, {
     method: 'POST',
     headers,
     body: JSON.stringify({
