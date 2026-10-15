@@ -155,6 +155,27 @@ func buildGHNPayload(order models.Order, cfg services.GHNConfig, req ghnHandover
 			WardName:     pick(req.ToWardName, cfg.ToWardName),
 			ProvinceName: pick(req.ToProvinceName, cfg.ToProvinceName),
 		}
+	} else if order.ToDistrictID > 0 && strings.TrimSpace(order.ToWardCode) != "" {
+		// Ưu tiên mã địa chỉ đã lưu trên đơn (khách chọn từ dropdown GHN) —
+		// chính xác hơn hẳn việc suy lại từ chuỗi địa chỉ tự do.
+		dest = &services.GHNDestination{
+			DistrictID: order.ToDistrictID,
+			WardCode:   order.ToWardCode,
+			// Tên chỉ để hiển thị trên nhãn: điền nếu suy ra được, không thì thôi
+			// (GHN định tuyến theo mã).
+			WardName: services.WardNameByCode(order.ToDistrictID, order.ToWardCode),
+		}
+		if d, err := cfg.ResolveDestination(toAddress); err == nil && d != nil && d.DistrictID == order.ToDistrictID {
+			if dest.DistrictName == "" {
+				dest.DistrictName = d.DistrictName
+			}
+			if dest.ProvinceName == "" {
+				dest.ProvinceName = d.ProvinceName
+			}
+			if dest.WardName == "" {
+				dest.WardName = d.WardName
+			}
+		}
 	} else {
 		d, err := cfg.ResolveDestination(toAddress)
 		if err != nil {

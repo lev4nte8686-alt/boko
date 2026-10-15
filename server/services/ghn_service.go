@@ -719,6 +719,25 @@ func ListWards(districtID int) ([]GHNWard, error) {
 	return out, nil
 }
 
+// WardNameByCode — tra tên Phường/Xã theo mã trong 1 Quận/Huyện (dùng cache của
+// ListWards). Trả "" nếu không tìm thấy. Dùng để điền tên trên nhãn GHN khi ta
+// chỉ có mã đã lưu ở đơn.
+func WardNameByCode(districtID int, wardCode string) string {
+	if districtID <= 0 || strings.TrimSpace(wardCode) == "" {
+		return ""
+	}
+	wards, err := ListWards(districtID)
+	if err != nil {
+		return ""
+	}
+	for _, w := range wards {
+		if w.WardCode == wardCode {
+			return w.WardName
+		}
+	}
+	return ""
+}
+
 // ==================== ĐIỂM LẤY HÀNG + PHÍ VẬN CHUYỂN ====================
 
 var originCache struct {
