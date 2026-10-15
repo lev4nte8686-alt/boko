@@ -70,6 +70,19 @@ func main() {
 		}
 	})
 
+	// Security headers — prod (Render) không có nginx đứng trước như local,
+	// nên backend tự gắn để qua ZAP T01 (CSP API để 'none' vì API chỉ trả JSON).
+	r.Use(func(c *gin.Context) {
+		c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("X-Frame-Options", "SAMEORIGIN")
+		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
+		c.Header("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+		if strings.HasPrefix(c.Request.URL.Path, "/api/") {
+			c.Header("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
+		}
+	})
+
 	// CORS — cho phép React frontend (localhost:3000)
 	// Khi deploy cloud (Vercel...), thêm origin qua biến môi trường CORS_ORIGINS,
 	// nhiều origin phân tách bằng dấu phẩy. Ví dụ:
