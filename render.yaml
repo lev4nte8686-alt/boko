@@ -51,3 +51,26 @@ services:
         sync: false # https://<web-vercel>/payment/momo-callback
       - key: MOMO_IPN_URL
         sync: false # https://<backend-render>/api/payment/momo/ipn
+      # Tuỳ chọn — bỏ trống là dùng giá trị mặc định trong code.
+      - key: SENTRY_DSN
+        sync: false # bỏ trống = tắt Sentry (no-op)
+      - key: PENDING_ORDER_TTL_MINUTES
+        value: "30" # đơn online treo quá 30 phút thì huỷ + hoàn kho
+      - key: FREE_SHIP_THRESHOLD
+        value: "300000"
+      - key: SHIP_FEE_FALLBACK
+        value: "30000"
+      - key: VAT_PERCENT
+        value: "0"
+      - key: GHN_FROM_DISTRICT_ID
+        sync: false
+      - key: GHN_FROM_WARD_CODE
+        sync: false
+      - key: GHN_FROM_PHONE
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: APP_BASE_URL
+        sync: false # https://<web-vercel>

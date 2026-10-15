@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/getsentry/sentry-go"
+	sentrygin "github.com/getsentry/sentry-go/gin"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -19,7 +21,42 @@ import (
 	"boko/models"
 	pmiddleware "boko/payments/middleware"
 	"boko/routes"
+	"boko/services"
 )
+
+// sentryEnabled — true khi SENTRY_DSN được cấu hình. Không có DSN thì mọi thứ
+// hoạt động bình thường (no-op), không gửi sự kiện ra ngoài.
+var sentryEnabled bool
+
+// initSentry — bật Sentry khi có SENTRY_DSN. Không set DSN => tắt (no-op).
+func initSentry() {
+	dsn := strings.TrimSpace(os.Getenv("SENTRY_DSN"))
+	if dsn == "" {
+		log.Println("Sentry: chưa cấu hình SENTRY_DSN — bỏ qua (no-op)")
+		return
+	}
+
+	sampleRate := 0.0
+	if raw := strings.TrimSpace(os.Getenv("SENTRY_TRACES_SAMPLE_RATE")); raw != "" {
+		if v, err := strconv.ParseFloat(raw, 64); err == nil && v >= 0 {
+			sampleRate = v
+		}
+	}
+
+	err := sentry.Init(sentry.ClientOptions{
+		Dsn:              dsn,
+		Environment:      strings.TrimSpace(os.Getenv("SENTRY_ENVIRONMENT")),
+		Release:          strings.TrimSpace(os.Getenv("SENTRY_RELEASE")),
+		TracesSampleRate: sampleRate,
+	})
+	if err != nil {
+		log.Printf("Sentry: khởi tạo thất bại — %v (tiếp tục chạy không Sentry)", err)
+		return
+	}
+
+	sentryEnabled = true
+	log.Println("Sentry: đã bật báo cáo lỗi backend")
+}
 
 // rateLimitPerMinute — số request tối đa mỗi IP mỗi phút. Mặc định 120 (giữ
 // nguyên cho production); có thể nới khi chạy QA/e2e local qua env
@@ -67,10 +104,21 @@ func main() {
 		&models.EmailLog{},
 	)
 
+	// Bật Sentry (no-op nếu thiếu SENTRY_DSN). Đăng ký trước khi tạo router để
+	// middleware báo cáo lỗi được gắn vào chuỗi xử lý.
+	initSentry()
+	if sentryEnabled {
+		defer sentry.Flush(2 * time.Second)
+	}
+
 	// Tạo router Gin
 	r := gin.Default()
 	// Tự sửa path thừa dấu / (vd //api/... do base URL có trailing slash) thay vì 404.
 	r.RedirectFixedPath = true
+	if sentryEnabled {
+		// Repanic=true để gin.Recovery() (đã gắn ở gin.Default) vẫn trả 500 như cũ.
+		r.Use(sentrygin.New(sentrygin.Options{Repanic: true}))
+	}
 	r.Use(pmiddleware.NewRedactingLogger())
 	r.Use(pmiddleware.RateLimitMiddleware(rateLimitPerMinute(), 1*time.Minute, func(c *gin.Context) string {
 		return c.ClientIP()
@@ -136,6 +184,9 @@ func main() {
 
 	// Backfill mã tra cứu cho đơn hàng cũ (trước bản vá T07)
 	backfillTrackingTokens()
+
+	// Huỷ tự động các đơn online treo (pending + unpaid) quá hạn, hoàn tồn kho.
+	services.StartPendingOrderReaper()
 
 	// Chạy server — nền tảng cloud (Render...) cấp cổng qua biến môi trường
 	// PORT, local mặc định 8080.

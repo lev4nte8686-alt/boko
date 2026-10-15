@@ -3,6 +3,7 @@ package controllers
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -32,10 +33,16 @@ func GetBooks(c *gin.Context) {
 
 	query := config.DB.Model(&models.Book{}).Preload("Category")
 
-	// Tìm kiếm theo tên sách hoặc tác giả
-	if search != "" {
-		searchTerm := "%" + search + "%"
-		query = query.Where("title ILIKE ? OR author ILIKE ?", searchTerm, searchTerm)
+	// Tìm kiếm theo tên sách, tác giả hoặc tên danh mục.
+	// Dùng LOWER(...) LIKE LOWER(...) để chạy được trên cả PostgreSQL và SQLite
+	// (ILIKE là cú pháp riêng của Postgres, không dùng được trong unit test).
+	if trimmed := strings.TrimSpace(search); trimmed != "" {
+		searchTerm := "%" + strings.ToLower(trimmed) + "%"
+		query = query.Where(
+			"LOWER(books.title) LIKE ? OR LOWER(books.author) LIKE ? OR "+
+				"books.category_id IN (SELECT id FROM categories WHERE LOWER(name) LIKE ?)",
+			searchTerm, searchTerm, searchTerm,
+		)
 	}
 
 	// Lọc theo danh mục
