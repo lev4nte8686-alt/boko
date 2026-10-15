@@ -522,6 +522,11 @@ func GHNWebhook(c *gin.Context) {
 	if incoming == "" {
 		incoming = c.Query("secret")
 	}
+	if incoming == "" {
+		// GHN không gửi được header/query tuỳ biến -> cho phép đặt secret trong
+		// đường dẫn: POST /api/ghn/webhook/<secret>
+		incoming = c.Param("secret")
+	}
 	if subtle.ConstantTimeCompare([]byte(incoming), []byte(cfg.WebhookSecret)) != 1 {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Webhook secret không đúng"})
 		return

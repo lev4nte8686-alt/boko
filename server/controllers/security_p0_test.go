@@ -90,6 +90,35 @@ func TestP0_GhnWebhook_WrongSecret(t *testing.T) {
 	}
 }
 
+// GHN webhook: chấp nhận secret đặt trong ĐƯỜNG DẪN (GHN không gửi được
+// header/query tuỳ biến). Secret sai ở đường dẫn vẫn phải 401 (fail-closed).
+func TestP0_GhnWebhook_PathSecretValidated(t *testing.T) {
+	t.Setenv("GHN_WEBHOOK_SECRET", "super-secret")
+
+	r := newTestRouter(func(r *gin.Engine) { r.POST("/api/ghn/webhook/:secret", GHNWebhook) })
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/ghn/webhook/sai-secret", bytes.NewBufferString("{}"))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("secret sai trong đường dẫn phải 401, nhận %d", w.Code)
+	}
+
+	// Secret đúng: guard qua -> handler chạm DB (nil trong test) nên ta chỉ cần
+	// chắc chắn KHÔNG còn là 401 nữa (bị chặn ở tầng secret).
+	w2 := httptest.NewRecorder()
+	req2, _ := http.NewRequest("POST", "/api/ghn/webhook/super-secret", bytes.NewBufferString("{}"))
+	req2.Header.Set("Content-Type", "application/json")
+	func() {
+		defer func() { _ = recover() }() // DB nil có thể panic; bỏ qua
+		r.ServeHTTP(w2, req2)
+	}()
+	if w2.Code == http.StatusUnauthorized {
+		t.Fatalf("secret đúng trong đường dẫn không được trả 401")
+	}
+}
+
 // P0-2: tạo phiên VNPAY phải fail-closed khi thiếu credential thật (mock tắt).
 func TestP0_CreateVnPay_BlockedWithoutCredentials(t *testing.T) {
 	t.Setenv("ALLOW_MOCK_PAYMENT", "false")

@@ -87,6 +87,9 @@ func SetupRoutes(r *gin.Engine) {
 	r.POST("/api/orders/:id/ghn/sync", middleware.AuthOptional, controllers.SyncOrderShipment)
 	// GHN gọi ngược khi trạng thái đơn thay đổi (phải public, không cần đăng nhập)
 	r.POST("/api/ghn/webhook", controllers.GHNWebhook)
+	// Biến thể đặt secret ngay trong đường dẫn (GHN không gửi được header/query):
+	// POST /api/ghn/webhook/<secret>
+	r.POST("/api/ghn/webhook/:secret", controllers.GHNWebhook)
 
 	// ==================== PROTECTED ROUTES ====================
 
