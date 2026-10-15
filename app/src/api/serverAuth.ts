@@ -56,21 +56,23 @@ export interface ServerAuthResponse {
 /**
  * Helper to perform fetch requests to the backend server with standard headers and timeout
  */
-async function fetchServer<T>(endpoint: string, options: RequestInit = {}, timeoutMs = 8000): Promise<T> {
+async function fetchServer<T>(endpoint: string, options: RequestInit = {}, timeoutMs = 45000): Promise<T> {
   const baseUrl = getBackendBaseUrl();
   console.log("[fetchServer] Base URL:", baseUrl);
-  // if (!baseUrl) {
-  //   throw new Error('BACKEND_URL_NOT_CONFIGURED');
-  // }
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-  // const url = `${baseUrl}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+  // BẮT BUỘC ghép baseUrl: nếu để relative '/api/...' thì trên Vercel request
+  // sẽ gọi vào chính host Vercel (bị rewrite về index.html → 405) chứ không
+  // tới backend Render. Timeout 45s để chịu được cold-start của gói free.
+  const url = baseUrl
+    ? `${baseUrl}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`
+    : endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
 
-  console.log("[fetchServer] Requesting:", endpoint, "with options:", options);
+  console.log("[fetchServer] Requesting:", url, "with options:", options);
   try {
-    const res = await fetch(endpoint, {
+    const res = await fetch(url, {
       ...options,
       signal: controller.signal,
       headers: {

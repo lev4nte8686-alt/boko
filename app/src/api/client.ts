@@ -29,7 +29,7 @@ export async function fetchJson<T>(endpoint: string, options: RequestInit = {}):
   }
 
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 10000);
+  const timeout = window.setTimeout(() => controller.abort(), 30000);
   const baseUrl = getBackendBaseUrl();
   // N\u1ebfu baseUrl r\u1ed7ng, d\u00f9ng relative path \u0111\u1ec3 nginx proxy t\u1edbi backend (khi deploy Docker)
   const url = baseUrl
