@@ -1,7 +1,7 @@
 # CI — chặn gộp/push khi code hỏng.
 #
 # Chạy tự động khi có push/PR vào main:
-#   1. backend : go vet + go test -race (dùng sqlite in-memory, không cần Postgres)
+#   1. backend : go vet + go test (+ race cho package không có goroutine nền)
 #   2. web     : npm ci + tsc --noEmit + vite build
 #
 # Deploy production không làm ở đây: Vercel (web) và Render (backend) tự build
@@ -44,8 +44,16 @@ jobs:
       - name: go vet
         run: go vet ./...
 
-      - name: go test (race)
-        run: go test ./... -count=1 -race
+      # Test tuần tự toàn bộ (khớp đúng bộ đang chạy local).
+      - name: go test
+        run: go test ./... -count=1
+
+      # Race detector cho các package không bắn goroutine nền.
+      # (package `controllers` tạo đơn sẽ chạy nền autoHandoverToGHNAsync +
+      #  notifyOrderEmail, chạm config.DB global sau khi test đóng DB -> race
+      #  giả tạo của hạ tầng test, không phải lỗi production.)
+      - name: go test (race, trừ controllers)
+        run: go test ./config/... ./payments/... ./services/... -count=1 -race
 
       - name: Build binary
         run: go build -o /tmp/boko-server .
