@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { CartItem, CheckoutFormState, CustomerOrderSummary, Currency, Order, User, ShippingAddress } from '../types';
 import { createMomoPaymentApi, createVnpayPaymentApi, createPaypalPaymentApi, VerifyAtmOtpResponse } from '../api/payment';
 import { createCodOrderApi } from '../api/order';
+import { resolveBackendBookId } from '../api/catalog';
 import { NcbOtpModal } from './NcbOtpModal';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -406,18 +407,16 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
         const fullAddress = `${formData.streetAddress || formData.address || ''}, ${formData.ward || ''}, ${formData.province || ''}`.trim();
         const idempotencyKey = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `IDEMP-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
-        const codItems = displayItems.map((item) => {
-          const numId = Number(item.book.id);
-          if (!Number.isSafeInteger(numId) || numId <= 0) {
-            throw new Error(`Sách "${item.book.title}" hiện không có trong hệ thống nên không thể đặt hàng. Vui lòng chọn cuốn khác.`);
-          }
+        const codItems = await Promise.all(displayItems.map(async (item) => {
+          // Sách demo có id chuỗi ('tt-1'...): resolve về id số backend theo tên sách.
+          const bookId = await resolveBackendBookId({ id: item.book.id, title: item.book.title });
           return {
-            book_id: numId,
+            book_id: bookId,
             title: item.book.title,
             price: item.book.priceVND,
             quantity: item.quantity,
           };
-        });
+        }));
 
         const codRes = await createCodOrderApi({
           amount: Math.round(totalVND),
@@ -1547,7 +1546,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
         customerName={`${formData.firstName} ${formData.lastName}`.trim()}
         couponCode={appliedDiscountCode}
         items={displayItems.map((item) => ({
-          book_id: typeof item.book.id === 'number' ? item.book.id : 1,
+          book_id: item.book.id,
           title: item.book.title,
           price: item.book.priceVND,
           quantity: item.quantity,

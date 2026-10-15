@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { verifyAtmOtpPaymentApi, VerifyAtmOtpResponse } from '../api/payment';
+import { resolveBackendBookId } from '../api/catalog';
 
 interface NcbOtpModalProps {
   isOpen: boolean;
@@ -14,7 +15,7 @@ interface NcbOtpModalProps {
   customerName: string;
   couponCode?: string;
   items: Array<{
-    book_id: number;
+    book_id: number | string;
     title: string;
     price: number;
     quantity: number;
@@ -83,6 +84,15 @@ export const NcbOtpModal: React.FC<NcbOtpModalProps> = ({
     setErrorMessage(null);
 
     try {
+      // Sách demo có id chuỗi: resolve về id số backend theo tên sách trước khi gửi.
+      const resolvedItems = await Promise.all(
+        items.map(async (it) => ({
+          book_id: await resolveBackendBookId({ id: it.book_id, title: it.title }),
+          title: it.title,
+          price: it.price,
+          quantity: it.quantity,
+        }))
+      );
       const res = await verifyAtmOtpPaymentApi({
         amount: Math.round(amountVND),
         cardNumber,
@@ -94,7 +104,7 @@ export const NcbOtpModal: React.FC<NcbOtpModalProps> = ({
         email,
         customerName,
         couponCode,
-        items,
+        items: resolvedItems,
       });
 
       onSuccess(res);
