@@ -8,7 +8,8 @@ export function getBackendBaseUrl(): string {
   // Nếu VITE_BACKEND_URL được set (ví dụ: http://localhost:8080 khi dev local),
   // dùng nó làm base URL. Nếu không (khi deploy qua nginx), trả về '' để
   // các request dùng relative path /api/... và được nginx proxy tới backend.
-  return (import.meta.env.VITE_BACKEND_URL || '').trim();
+  // Strip dấu / cuối để tránh double-slash (//api/...) gây 404 phía Gin.
+  return (import.meta.env.VITE_BACKEND_URL || '').trim().replace(/\/+$/, '');
 }
 
 /**

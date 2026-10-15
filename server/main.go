@@ -54,6 +54,8 @@ func main() {
 
 	// Tạo router Gin
 	r := gin.Default()
+	// Tự sửa path thừa dấu / (vd //api/... do base URL có trailing slash) thay vì 404.
+	r.RedirectFixedPath = true
 	r.Use(pmiddleware.NewRedactingLogger())
 	r.Use(pmiddleware.RateLimitMiddleware(120, 1*time.Minute, func(c *gin.Context) string {
 		return c.ClientIP()
