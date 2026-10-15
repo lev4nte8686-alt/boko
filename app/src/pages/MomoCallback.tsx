@@ -45,7 +45,9 @@ export const MomoCallback: React.FC<MomoCallbackProps> = ({ onOrderSuccessFinish
     async function checkStatus() {
       if (bokoId) {
         try {
-          const res = await getPaymentStatusApi(bokoId);
+          // momoOrderId chính là PaymentOrderID -> backend dùng làm mã xác thực
+          // cho khách vãng lai không đăng nhập.
+          const res = await getPaymentStatusApi(bokoId, momoOrderId || undefined);
           if (isMounted) {
             setBackendStatus(res);
           }

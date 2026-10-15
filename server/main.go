@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/rand"
 	"encoding/hex"
 	"log"
 	"os"
@@ -58,6 +59,15 @@ func main() {
 		return c.ClientIP()
 	}))
 
+	// Cache-Control — API trả dữ liệu nhạy cảm (đơn hàng, profile):
+	// cấm browser/proxy cache để ZAP không gắn cờ "Re-examine Cache-control".
+	r.Use(func(c *gin.Context) {
+		if strings.HasPrefix(c.Request.URL.Path, "/api/") {
+			c.Header("Cache-Control", "no-store, no-cache, must-revalidate")
+			c.Header("Pragma", "no-cache")
+		}
+	})
+
 	// CORS — cho phép React frontend (localhost:3000)
 	// Khi deploy cloud (Vercel...), thêm origin qua biến môi trường CORS_ORIGINS,
 	// nhiều origin phân tách bằng dấu phẩy. Ví dụ:
@@ -90,6 +100,9 @@ func main() {
 
 	// Seed dữ liệu mẫu
 	seedData()
+
+	// Backfill mã tra cứu cho đơn hàng cũ (trước bản vá T07)
+	backfillTrackingTokens()
 
 	// Chạy server — nền tảng cloud (Render...) cấp cổng qua biến môi trường
 	// PORT, local mặc định 8080.
@@ -301,6 +314,26 @@ func seedUser(email, passwordEnv, name, role string) {
 		config.DB.Model(&models.User{}).Where("email = ?", email).Update("password", string(hashed))
 		log.Printf("seed: đã đồng bộ lại mật khẩu cho %s từ %s", email, passwordEnv)
 	}
+}
+
+// backfillTrackingTokens — cấp mã tra cứu cho đơn tạo trước bản vá T07.
+// Chạy mỗi lần khởi động, chỉ chạm các dòng còn trống nên an toàn idempotent.
+func backfillTrackingTokens() {
+	var ids []uint
+	if err := config.DB.Model(&models.Order{}).
+		Where("tracking_token = '' OR tracking_token IS NULL").
+		Pluck("id", &ids).Error; err != nil || len(ids) == 0 {
+		return
+	}
+	for _, id := range ids {
+		var b [32]byte
+		if _, err := rand.Read(b[:]); err != nil {
+			continue
+		}
+		config.DB.Model(&models.Order{}).Where("id = ?", id).
+			Update("tracking_token", hex.EncodeToString(b[:]))
+	}
+	log.Printf("backfill: đã cấp tracking_token cho %d đơn hàng cũ", len(ids))
 }
 
 // getSeedEnv — đọc biến môi trường, dùng fallback khi trống

@@ -1,9 +1,13 @@
 package controllers
 
 import (
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,6 +17,15 @@ import (
 	"boko/config"
 	"boko/models"
 )
+
+// generateTrackingToken — mã tra cứu đơn ngẫu nhiên 256-bit cho khách vãng lai.
+func generateTrackingToken() string {
+	var b [32]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("fallback-%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b[:])
+}
 
 // ==================== ORDER ====================
 
@@ -101,6 +114,7 @@ func CreateOrder(c *gin.Context) {
 			PaymentMethod:   input.PaymentMethod,
 			CouponCode:      input.CouponCode,
 			DiscountPercent: discountPercent,
+			TrackingToken:   generateTrackingToken(),
 			CreatedAt:       time.Now(),
 		}
 		if err := tx.Create(&order).Error; err != nil {
@@ -158,27 +172,43 @@ func CreateOrder(c *gin.Context) {
 	})
 }
 
-// GetMyOrders — lịch sử đơn hàng của user (hỗ trợ cả token auth hoặc theo email query)
+// GetMyOrders — lịch sử đơn hàng của user đã đăng nhập (lọc theo user_id).
+// Khách vãng lai tra cứu 1 đơn bằng cặp order_id + token (mã không đoán được
+// trả về lúc tạo đơn). KHÔNG còn tra cứu công khai bằng email.
 func GetMyOrders(c *gin.Context) {
 	var orders []models.Order
 	query := config.DB.Preload("Items").Preload("Shipment")
 
 	if val, exists := c.Get("user_id"); exists {
 		if uid, ok := val.(uint); ok && uid > 0 {
-			query = query.Where("user_id = ?", uid)
-		}
-	} else if email := c.Query("email"); email != "" {
-		var user models.User
-		if err := config.DB.Where("email = ?", email).First(&user).Error; err == nil {
-			query = query.Where("user_id = ?", user.ID)
-		} else {
-			c.JSON(http.StatusOK, gin.H{"data": []models.Order{}})
+			query.Order("created_at DESC").Where("user_id = ?", uid).Find(&orders)
+			c.JSON(http.StatusOK, gin.H{"data": orders})
 			return
 		}
 	}
 
-	query.Order("created_at DESC").Find(&orders)
-	c.JSON(http.StatusOK, gin.H{"data": orders})
+	// Không token: chỉ cho tra cứu đúng 1 đơn khi có tracking token hợp lệ.
+	orderIDStr := strings.TrimSpace(c.Query("order_id"))
+	token := strings.TrimSpace(c.Query("token"))
+	if orderIDStr == "" || token == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Yêu cầu đăng nhập hoặc cung cấp mã tra cứu đơn hàng"})
+		return
+	}
+	orderID, err := strconv.ParseUint(orderIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID đơn hàng không hợp lệ"})
+		return
+	}
+	var order models.Order
+	if err := query.Where("id = ?", uint(orderID)).First(&order).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy đơn hàng"})
+		return
+	}
+	if subtle.ConstantTimeCompare([]byte(order.TrackingToken), []byte(token)) != 1 || order.TrackingToken == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy đơn hàng"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": []models.Order{order}})
 }
 
 // applyCouponAtomic — Áp dụng và cập nhật quota coupon nguyên tử trong Transaction
@@ -277,10 +307,15 @@ func CreateCodOrder(c *gin.Context) {
 		var existingOrders []models.Order
 		if err := config.DB.Preload("Items").Where("idempotency_key = ?", idempotencyKey).Limit(1).Find(&existingOrders).Error; err == nil && len(existingOrders) > 0 {
 			existingOrder := existingOrders[0]
+			if existingOrder.TrackingToken == "" {
+				existingOrder.TrackingToken = generateTrackingToken()
+				config.DB.Model(&models.Order{}).Where("id = ?", existingOrder.ID).Update("tracking_token", existingOrder.TrackingToken)
+			}
 			c.JSON(http.StatusOK, gin.H{
 				"message":        "Đơn hàng đã được tạo trước đó (Idempotency Key khớp)",
 				"order_id":       existingOrder.ID,
 				"order":          existingOrder,
+				"tracking_token": existingOrder.TrackingToken,
 				"total":          existingOrder.Total,
 				"status":         existingOrder.Status,
 				"payment_method": existingOrder.PaymentMethod,
@@ -406,6 +441,7 @@ func CreateCodOrder(c *gin.Context) {
 			DiscountPercent: discountPercent,
 			StockDeducted:   true,
 			IdempotencyKey:  idempotencyKey,
+			TrackingToken:   generateTrackingToken(),
 			CreatedAt:       time.Now(),
 		}
 		if err := tx.Create(&order).Error; err != nil {
@@ -455,6 +491,7 @@ func CreateCodOrder(c *gin.Context) {
 		"message":        "Đặt hàng COD thành công!",
 		"order_id":       createdOrder.ID,
 		"order":          createdOrder,
+		"tracking_token": createdOrder.TrackingToken,
 		"total":          createdOrder.Total,
 		"status":         createdOrder.Status,
 		"payment_method": createdOrder.PaymentMethod,

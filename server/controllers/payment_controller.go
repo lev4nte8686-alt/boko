@@ -1,8 +1,10 @@
 package controllers
 
 import (
+	"crypto/subtle"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +16,43 @@ import (
 	"boko/payments"
 	"boko/services"
 )
+
+// mockPaymentAllowed — mock gateway chỉ mở khi ALLOW_MOCK_PAYMENT=true (local/test).
+// Production luôn 403 để không ai tự đánh dấu đơn đã trả tiền.
+func mockPaymentAllowed(c *gin.Context) bool {
+	if os.Getenv("ALLOW_MOCK_PAYMENT") != "true" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Mock payment đã bị tắt ở môi trường này"})
+		return false
+	}
+	return true
+}
+
+// authorizeOrderStatus — ai được đọc trạng thái đơn hàng?
+//   - Đã đăng nhập: chỉ chủ đơn (lọc theo user_id).
+//   - Khách vãng lai: phải có ?key= trùng PaymentOrderID (mã gateway không đoán
+//     được, chỉ người tạo thanh toán mới có). Sai/thiếu -> 401, cố tình trả
+//     404 nếu đơn không tồn tại để chống enumerate ID.
+func authorizeOrderStatus(c *gin.Context, orderID uint) (models.Order, bool) {
+	var order models.Order
+	if userID, exists := c.Get("user_id"); exists {
+		if err := config.DB.Where("id = ? AND user_id = ?", orderID, userID).First(&order).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy đơn hàng"})
+			return order, false
+		}
+		return order, true
+	}
+	if err := config.DB.First(&order, orderID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy đơn hàng"})
+		return order, false
+	}
+	key := strings.TrimSpace(c.Query("key"))
+	if key == "" || order.PaymentOrderID == "" ||
+		subtle.ConstantTimeCompare([]byte(key), []byte(order.PaymentOrderID)) != 1 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Thiếu mã xác thực tra cứu đơn hàng"})
+		return order, false
+	}
+	return order, true
+}
 
 // ==================== PAYMENT CONTROLLER ====================
 
@@ -194,16 +233,8 @@ func GetPaymentStatus(c *gin.Context) {
 		return
 	}
 
-	var order models.Order
-	var dbErr error
-	if userID, exists := c.Get("user_id"); exists {
-		dbErr = config.DB.Where("id = ? AND user_id = ?", uint(orderID), userID).First(&order).Error
-	} else {
-		dbErr = config.DB.First(&order, uint(orderID)).Error
-	}
-
-	if dbErr != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy đơn hàng"})
+	order, ok := authorizeOrderStatus(c, uint(orderID))
+	if !ok {
 		return
 	}
 
@@ -238,6 +269,9 @@ func GetPaymentStatus(c *gin.Context) {
 
 // MockMomoIPN — API tiện ích cho lập trình viên test giả lập IPN thành công nội bộ
 func MockMomoIPN(c *gin.Context) {
+	if !mockPaymentAllowed(c) {
+		return
+	}
 	orderIDStr := c.Param("id")
 	orderID, err := strconv.ParseUint(orderIDStr, 10, 32)
 	if err != nil {
@@ -597,16 +631,8 @@ func GetPaypalPaymentStatus(c *gin.Context) {
 		return
 	}
 
-	var order models.Order
-	var dbErr error
-	if userID, exists := c.Get("user_id"); exists {
-		dbErr = config.DB.Where("id = ? AND user_id = ?", uint(orderID), userID).First(&order).Error
-	} else {
-		dbErr = config.DB.First(&order, uint(orderID)).Error
-	}
-
-	if dbErr != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy đơn hàng"})
+	order, ok := authorizeOrderStatus(c, uint(orderID))
+	if !ok {
 		return
 	}
 
@@ -639,6 +665,9 @@ func GetPaypalPaymentStatus(c *gin.Context) {
 
 // MockPaypalCapture — API tiện ích cho lập trình viên test giả lập capture thành công nội bộ
 func MockPaypalCapture(c *gin.Context) {
+	if !mockPaymentAllowed(c) {
+		return
+	}
 	orderIDStr := c.Param("id")
 	orderID, err := strconv.ParseUint(orderIDStr, 10, 32)
 	if err != nil {
