@@ -300,6 +300,69 @@ export async function signupApi(data: SignupData): Promise<AuthResponse> {
 }
 
 /**
+ * Forgot Password API function
+ * Gửi yêu cầu đặt lại mật khẩu tới POST /api/auth/forgot-password.
+ * Backend luôn trả 200 (không tiết lộ email có tồn tại hay không).
+ */
+export async function forgotPasswordApi(
+  email: string
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  const trimmed = email.trim();
+  if (!trimmed || !trimmed.includes('@')) {
+    return { success: false, error: 'Vui lòng nhập địa chỉ email hợp lệ.' };
+  }
+
+  try {
+    const base = getBackendBaseUrl();
+    const res = await fetch(`${base}/api/auth/forgot-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ email: trimmed }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { success: false, error: data?.error || 'Không gửi được yêu cầu đặt lại mật khẩu.' };
+    }
+    return { success: true, message: data?.message };
+  } catch {
+    return { success: false, error: 'Không thể kết nối tới máy chủ. Vui lòng thử lại.' };
+  }
+}
+
+/**
+ * Reset Password API function
+ * Đặt lại mật khẩu bằng token: POST /api/auth/reset-password.
+ */
+export async function resetPasswordApi(
+  token: string,
+  password: string
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  const trimmedToken = (token || '').trim();
+  if (!trimmedToken) {
+    return { success: false, error: 'Thiếu mã đặt lại mật khẩu trong đường dẫn.' };
+  }
+  if (password.length < 6) {
+    return { success: false, error: 'Mật khẩu phải có ít nhất 6 ký tự.' };
+  }
+
+  try {
+    const base = getBackendBaseUrl();
+    const res = await fetch(`${base}/api/auth/reset-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ token: trimmedToken, password }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { success: false, error: data?.error || 'Đặt lại mật khẩu không thành công.' };
+    }
+    return { success: true, message: data?.message };
+  } catch {
+    return { success: false, error: 'Không thể kết nối tới máy chủ. Vui lòng thử lại.' };
+  }
+}
+
+/**
  * Social OAuth Login API function
  */
 export async function socialLoginApi(provider: 'google' | 'facebook' | 'apple'): Promise<AuthResponse> {
@@ -383,7 +446,8 @@ export function getStoredAuthUser(): User | null {
 export function getStoredAuthToken(): string | null {
   try {
     const token = localStorage.getItem(STORAGE_AUTH_TOKEN_KEY);
-    if (!token || token.startsWith('mock-token-')) {
+    // Loại bỏ token giả lập/offline (mock-token-*, google-demo-token-*) — không gửi lên backend.
+    if (!token || token.startsWith('mock-token-') || token.startsWith('google-demo-token-')) {
       return null;
     }
     return token;

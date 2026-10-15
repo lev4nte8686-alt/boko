@@ -35,8 +35,8 @@ export interface CreateMomoPaymentParams {
 function getAuthToken(): string {
   try {
     const token = localStorage.getItem('boko_auth_token') || '';
-    // Nếu là mock-token từ chế độ giả lập offline thì không gửi lên backend thật
-    if (!token || token.startsWith('mock-token-')) {
+    // Nếu là mock-token/google-demo-token từ chế độ giả lập offline thì không gửi lên backend thật
+    if (!token || token.startsWith('mock-token-') || token.startsWith('google-demo-token-')) {
       return '';
     }
     return token;
@@ -443,6 +443,8 @@ export interface VerifyAtmOtpParams {
   email?: string;
   customerName?: string;
   couponCode?: string;
+  toDistrictId?: number;
+  toWardCode?: string;
   items?: Array<{
     book_id: number;
     title: string;
@@ -489,6 +491,8 @@ export async function verifyAtmOtpPaymentApi(
       email: params.email || '', 
       customer_name: params.customerName || '',
       coupon_code: params.couponCode || '',
+      to_district_id: params.toDistrictId || 0,
+      to_ward_code: params.toWardCode || '',
       items: params.items || [],
     }),
   });

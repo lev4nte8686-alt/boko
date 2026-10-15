@@ -2,6 +2,7 @@ package payments
 
 import (
 	"os"
+	"strings"
 )
 
 // MomoConfig — cấu hình kết nối tới MoMo Sandbox
@@ -15,17 +16,42 @@ type MomoConfig struct {
 	IpnURL      string
 }
 
-// GetMomoConfig — đọc cấu hình từ biến môi trường, có fallback về Sandbox Test Credentials chuẩn
+// SandboxCredentialsAllowed — chỉ cho phép dùng credential Sandbox công khai khi
+// bật ALLOW_MOCK_PAYMENT=true (môi trường local/test). Production bắt buộc set
+// biến môi trường thật (fail-closed) để không dùng secret đã công khai trên GitHub.
+func SandboxCredentialsAllowed() bool {
+	return strings.EqualFold(strings.TrimSpace(os.Getenv("ALLOW_MOCK_PAYMENT")), "true")
+}
+
+// secretEnv — đọc secret từ env; nếu thiếu thì chỉ fallback về giá trị Sandbox
+// công khai khi được phép chạy mock, ngược lại trả chuỗi rỗng (fail-closed).
+func secretEnv(key, sandboxFallback string) string {
+	if val, ok := os.LookupEnv(key); ok && strings.TrimSpace(val) != "" {
+		return strings.TrimSpace(val)
+	}
+	if SandboxCredentialsAllowed() {
+		return sandboxFallback
+	}
+	return ""
+}
+
+// GetMomoConfig — đọc cấu hình từ biến môi trường. Partner/Access/Secret Key
+// KHÔNG còn fallback công khai ngoài môi trường mock (xem secretEnv).
 func GetMomoConfig() MomoConfig {
 	return MomoConfig{
-		PartnerCode: getEnv("MOMO_PARTNER_CODE", "MOMOBKUN20180529"),
-		AccessKey:   getEnv("MOMO_ACCESS_KEY", "klm05TvNBzhg7h7j"),
-		SecretKey:   getEnv("MOMO_SECRET_KEY", "at67qH6mk8w5Y1nAyMoYKMWACiEi2bsa"),
+		PartnerCode: secretEnv("MOMO_PARTNER_CODE", "MOMOBKUN20180529"),
+		AccessKey:   secretEnv("MOMO_ACCESS_KEY", "klm05TvNBzhg7h7j"),
+		SecretKey:   secretEnv("MOMO_SECRET_KEY", "at67qH6mk8w5Y1nAyMoYKMWACiEi2bsa"),
 		Endpoint:    getEnv("MOMO_ENDPOINT", "https://test-payment.momo.vn/v2/gateway/api/create"),
 		QueryURL:    getEnv("MOMO_QUERY_URL", "https://test-payment.momo.vn/v2/gateway/api/query"),
 		RedirectURL: getEnv("MOMO_REDIRECT_URL", "http://localhost:3000/payment/momo-callback"),
 		IpnURL:      getEnv("MOMO_IPN_URL", "http://localhost:8080/api/payment/momo/ipn"),
 	}
+}
+
+// IsConfigured — true khi đã có đủ credential để gọi MoMo (env thật hoặc sandbox mock).
+func (c MomoConfig) IsConfigured() bool {
+	return c.PartnerCode != "" && c.AccessKey != "" && c.SecretKey != ""
 }
 
 func getEnv(key, fallback string) string {

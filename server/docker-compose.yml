@@ -31,6 +31,9 @@ services:
     environment:
       DB_HOST: db      # override localhost trong .env → dùng service name Docker
       DB_PORT: "5432"
+      # Nới rate limit cho bộ test e2e local (nhiều request cùng IP).
+      # Production (Render) KHÔNG set → mặc định 120 request/phút/IP.
+      RATE_LIMIT_PER_MINUTE: "600"
     depends_on:
       db:
         condition: service_healthy

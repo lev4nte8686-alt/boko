@@ -44,10 +44,10 @@ ON CONFLICT (name) DO NOTHING;
 -- ----------------------------------------------------------------------------
 INSERT INTO users (email, password, name, role, created_at, updated_at) VALUES
     ('admin@boko.com',
-     crypt('admin123', gen_salt('bf')),
+     crypt(encode(gen_random_bytes(32), 'hex'), gen_salt('bf')),
      'Admin Boko', 'admin', NOW(), NOW()),
     ('test@gmail.com',
-     crypt('testpass', gen_salt('bf')),
+     crypt(encode(gen_random_bytes(32), 'hex'), gen_salt('bf')),
      'test_user', 'customer', NOW(), NOW())
 ON CONFLICT (email) DO NOTHING;
 

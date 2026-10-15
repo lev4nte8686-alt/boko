@@ -42,9 +42,6 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   const vatEUR = 0;
   const vatVND = 0;
 
-  const shippingEUR = 0;
-  const shippingVND = 0;
-
   const totalEUR = Math.max(0, subtotalEUR - discountEUR);
   const totalVND = Math.max(0, subtotalVND - discountVND);
 
@@ -223,13 +220,13 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
               )}
 
               <div className="flex justify-between">
-                <span>VAT (5%)</span>
+                <span>Thuế GTGT (sách miễn thuế)</span>
                 <span>{formatPrice(vatEUR, vatVND)}</span>
               </div>
 
               <div className="flex justify-between">
                 <span>Phí vận chuyển</span>
-                <span>{isFreeShip ? 'MIỄN PHÍ' : formatPrice(shippingEUR, shippingVND)}</span>
+                <span>{isFreeShip ? 'MIỄN PHÍ' : 'Tính ở bước thanh toán'}</span>
               </div>
 
               <div className="flex justify-between text-base font-display font-bold text-slate-900 pt-2 border-t border-slate-200">

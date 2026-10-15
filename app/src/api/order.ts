@@ -1,7 +1,8 @@
 function getAuthToken(): string {
   try {
     const token = localStorage.getItem('boko_auth_token') || '';
-    if (!token || token.startsWith('mock-token-')) {
+    // Bỏ qua token giả lập/offline (mock-token-*, google-demo-token-*).
+    if (!token || token.startsWith('mock-token-') || token.startsWith('google-demo-token-')) {
       return '';
     }
     return token;
@@ -25,6 +26,8 @@ export interface CreateCodOrderParams {
   customerName?: string;
   couponCode?: string;
   idempotencyKey?: string;
+  toDistrictId?: number;
+  toWardCode?: string;
   items: CreateCodOrderItem[];
 }
 
@@ -123,6 +126,8 @@ export async function createCodOrderApi(params: CreateCodOrderParams): Promise<C
       email: params.email,
       customer_name: params.customerName || '',
       coupon_code: params.couponCode || '',
+      to_district_id: params.toDistrictId || 0,
+      to_ward_code: params.toWardCode || '',
       items: params.items,
     }),
   });

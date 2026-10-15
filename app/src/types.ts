@@ -63,7 +63,11 @@ export interface CheckoutFormState {
   postalCode: string;
   telephone: string;
   province?: string;
+  district?: string;
   ward?: string;
+  provinceId?: number;
+  districtId?: number;
+  wardCode?: string;
   streetAddress?: string;
   paymentMethod: 'card' | 'ewallet' | 'bank' | 'cod' | 'paypal' | 'atm';
   cardNumber: string;
@@ -76,7 +80,11 @@ export interface ShippingAddress {
   fullName: string;
   phone: string;
   province: string;
+  district?: string;
   ward: string;
+  provinceId?: number;
+  districtId?: number;
+  wardCode?: string;
   streetAddress: string;
 }
 
@@ -115,6 +123,7 @@ export interface CustomerOrderSummary {
   address?: string;
   streetAddress?: string;
   ward?: string;
+  district?: string;
   province?: string;
   city?: string;
   country?: string;

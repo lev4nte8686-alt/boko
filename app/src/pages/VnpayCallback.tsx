@@ -22,7 +22,9 @@ export const VnpayCallback: React.FC<VnpayCallbackProps> = ({ onOrderSuccessFini
   // VNPAY amount nhân 100, nên chia 100 để ra số tiền VND thực tế
   const amount = (parseInt(amountStr, 10) || 0) / 100;
 
-  const isSuccess = responseCode === '00' || backendStatus?.payment_status === 'paid';
+  // CHỈ tin trạng thái đã được BACKEND xác thực (kiểm tra chữ ký HMAC-SHA512),
+  // KHÔNG tin vnp_ResponseCode trên URL (có thể bị giả mạo để hiện "thành công").
+  const isSuccess = backendStatus?.payment_status === 'paid';
 
   // Bảng diễn giải mã lỗi VNPAY thân thiện với người dùng
   const getVnpayErrorMessage = (code: string): string => {

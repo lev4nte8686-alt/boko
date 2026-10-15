@@ -1,0 +1,16 @@
+{
+  "name": "boko-qa",
+  "private": true,
+  "type": "module",
+  "description": "E2E / QA test cho Boko, chay tren localhost truoc khi ap len prod",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui",
+    "report": "playwright show-report",
+    "install:browser": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0"
+  }
+}

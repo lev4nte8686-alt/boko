@@ -3,6 +3,18 @@ import { CartItem, CheckoutFormState, CustomerOrderSummary, Currency, Order, Use
 import { createMomoPaymentApi, createVnpayPaymentApi, createPaypalPaymentApi, VerifyAtmOtpResponse } from '../api/payment';
 import { createCodOrderApi } from '../api/order';
 import { resolveBackendBookId } from '../api/catalog';
+import {
+  fetchProvincesApi,
+  fetchDistrictsApi,
+  fetchWardsApi,
+  fetchPricingApi,
+  quoteShippingApi,
+  PricingConfig,
+  ShippingProvince,
+  ShippingDistrict,
+  ShippingWard,
+  ShippingQuote,
+} from '../api/shipping';
 import { NcbOtpModal } from './NcbOtpModal';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -103,6 +115,14 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
   const [showNcbOtpModal, setShowNcbOtpModal] = useState<boolean>(false);
   const [vnpayMethod, setVnpayMethod] = useState<'NCB' | 'VNPAYQR' | 'VISA'>('NCB');
 
+  // Địa chỉ giao hàng (dropdown GHN) + phí vận chuyển/VAT
+  const [pricing, setPricing] = useState<PricingConfig | null>(null);
+  const [provinces, setProvinces] = useState<ShippingProvince[]>([]);
+  const [districts, setDistricts] = useState<ShippingDistrict[]>([]);
+  const [wards, setWards] = useState<ShippingWard[]>([]);
+  const [shippingQuote, setShippingQuote] = useState<ShippingQuote | null>(null);
+  const [isLoadingQuote, setIsLoadingQuote] = useState<boolean>(false);
+
   const savedCards = (user?.paymentMethods || []).filter((m) => m.type === 'card');
   const savedMomo = (user?.paymentMethods || []).filter((m) => m.type === 'momo');
   const savedAtm = (user?.paymentMethods || []).filter((m) => m.type === 'atm');
@@ -174,21 +194,134 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
   const discountEUR = subtotalEUR * discountRate;
   const discountVND = subtotalVND * discountRate;
 
-  const vatEUR = 0;
-  const vatVND = 0;
+  // Phí vận chuyển + VAT lấy từ backend (chuẩn hoá); 0 khi chưa chọn địa chỉ.
+  const shippingVND = shippingQuote ? shippingQuote.shipping_fee : 0;
+  const vatVND = shippingQuote ? shippingQuote.vat_amount : 0;
+  const shippingEUR = Math.round((shippingVND / VND_PER_USD) * 100) / 100;
+  const vatEUR = Math.round((vatVND / VND_PER_USD) * 100) / 100;
 
-  const shippingEUR = 0;
-  const shippingVND = 0;
+  const totalEUR = Math.max(0, subtotalEUR - discountEUR) + shippingEUR + vatEUR;
+  const totalVND = Math.max(0, subtotalVND - discountVND) + shippingVND + vatVND;
 
-  const totalEUR = Math.max(0, subtotalEUR - discountEUR);
-  const totalVND = Math.max(0, subtotalVND - discountVND);
+  const vatPercentLabel = shippingQuote ? shippingQuote.vat_percent : pricing?.vat_percent ?? 0;
+  const freeShipThreshold = shippingQuote ? shippingQuote.free_ship_threshold : pricing?.free_ship_threshold ?? 0;
+  const shipIsFree = isFreeShip || (shippingQuote ? shippingQuote.free_ship : false);
 
   const isEUR = currency === 'EUR';
   const totalUSD = Math.round((totalVND / VND_PER_USD) * 100) / 100;
 
+  // Tải cấu hình giá + danh mục Tỉnh/Thành (một lần khi vào trang)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [p, provs] = await Promise.all([fetchPricingApi(), fetchProvincesApi().catch(() => [])]);
+      if (cancelled) return;
+      setPricing(p);
+      setProvinces(provs);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Ký hiệu giỏ hàng để effect tính phí chỉ chạy khi giỏ thay đổi thực sự
+  const cartSignature = displayItems.map((i) => `${i.book.id}:${i.quantity}`).join('|');
+
+  // Tính phí vận chuyển khi đã chọn xong Quận/Huyện + Phường/Xã (+ mã giảm giá)
+  useEffect(() => {
+    const districtId = formData.districtId;
+    const wardCode = formData.wardCode;
+    if (!districtId || !wardCode) {
+      setShippingQuote(null);
+      return;
+    }
+    let cancelled = false;
+    setIsLoadingQuote(true);
+    (async () => {
+      try {
+        const items = await Promise.all(
+          displayItems.map(async (item) => ({
+            book_id: await resolveBackendBookId({ id: item.book.id, title: item.book.title }),
+            quantity: item.quantity,
+          }))
+        );
+        const quote = await quoteShippingApi({
+          items,
+          toDistrictId: districtId,
+          toWardCode: wardCode,
+          couponCode: appliedDiscountCode,
+        });
+        if (!cancelled) setShippingQuote(quote);
+      } catch {
+        if (!cancelled) setShippingQuote(null);
+      } finally {
+        if (!cancelled) setIsLoadingQuote(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.districtId, formData.wardCode, appliedDiscountCode, cartSignature]);
+
+  const handleProvinceChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const id = Number(e.target.value);
+    const p = provinces.find((x) => x.province_id === id);
+    setDistricts([]);
+    setWards([]);
+    setShippingQuote(null);
+    setFormData((prev) => ({
+      ...prev,
+      provinceId: id || undefined,
+      province: p?.province_name || '',
+      city: p?.province_name || '',
+      districtId: undefined,
+      district: '',
+      wardCode: undefined,
+      ward: '',
+    }));
+    if (id) {
+      try {
+        setDistricts(await fetchDistrictsApi(id));
+      } catch {
+        setDistricts([]);
+      }
+    }
+  };
+
+  const handleDistrictChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const id = Number(e.target.value);
+    const d = districts.find((x) => x.district_id === id);
+    setWards([]);
+    setShippingQuote(null);
+    setFormData((prev) => ({
+      ...prev,
+      districtId: id || undefined,
+      district: d?.district_name || '',
+      wardCode: undefined,
+      ward: '',
+    }));
+    if (id) {
+      try {
+        setWards(await fetchWardsApi(id));
+      } catch {
+        setWards([]);
+      }
+    }
+  };
+
+  const handleWardChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const code = e.target.value;
+    const w = wards.find((x) => x.ward_code === code);
+    setShippingQuote(null);
+    setFormData((prev) => ({ ...prev, wardCode: code || undefined, ward: w?.ward_name || '' }));
+  };
+
   const buildShippingAddress = () =>
-    `${formData.streetAddress || formData.address}, ${formData.ward || ''}, ${formData.province || formData.city || ''}`
-      .replace(/(^,\s*|,\s*$)/g, '')
+    [formData.streetAddress || formData.address, formData.ward, formData.district, formData.province || formData.city]
+      .filter((part) => part && String(part).trim() !== '')
+      .join(', ')
+      .replace(/\s+/g, ' ')
       .trim();
 
   const formatPrice = (eur: number, vnd: number) => {
@@ -228,6 +361,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
       address: formData.address,
       streetAddress: formData.streetAddress,
       ward: formData.ward,
+      district: formData.district,
       province: formData.province,
       shippingAddress: buildShippingAddress() || 'Địa chỉ nhận sách Boko',
       paymentMethod: 'atm',
@@ -243,10 +377,10 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
       subtotalVND,
       discountEUR,
       discountVND,
-      vatEUR: 0,
-      vatVND: 0,
-      shippingEUR: 0,
-      shippingVND: 0,
+      vatEUR,
+      vatVND,
+      shippingEUR,
+      shippingVND,
       totalEUR,
       totalVND: res.total ?? totalVND,
       currency,
@@ -282,6 +416,19 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
     if (!formData.telephone.trim()) errors.push('Vui lòng nhập Số điện thoại');
     if (!(formData.streetAddress || formData.address || '').trim()) errors.push('Vui lòng nhập Địa chỉ giao hàng');
 
+    // Chế độ dropdown GHN: bắt buộc chọn đủ Tỉnh/Quận/Phường để tính phí chính xác
+    if (provinces.length > 0) {
+      if (!formData.provinceId) errors.push('Vui lòng chọn Tỉnh / Thành phố');
+      if (!formData.districtId) errors.push('Vui lòng chọn Quận / Huyện');
+      if (!formData.wardCode) errors.push('Vui lòng chọn Phường / Xã');
+    }
+
+    // Các phương thức gửi số tiền từ trình duyệt cần phí ship đã tính xong
+    const needsExactClientTotal = formData.paymentMethod === 'paypal' || formData.paymentMethod === 'ewallet';
+    if (needsExactClientTotal && (!shippingQuote || isLoadingQuote)) {
+      errors.push('Đang tính phí vận chuyển cho địa chỉ đã chọn, vui lòng đợi trong giây lát.');
+    }
+
     if (errors.length > 0) {
       setFormErrors(errors);
       return;
@@ -309,6 +456,20 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
     }
 
     setFormErrors([]);
+
+    // Các phương thức CHƯA có tích hợp backend thật (Thẻ tín dụng/ghi nợ, Tài khoản
+    // ngân hàng, ZaloPay): trước đây rơi xuống nhánh cuối và tạo "đơn giả" rồi báo
+    // thành công. Nay chặn hẳn, không tạo đơn ảo.
+    const isUnsupportedMethod =
+      formData.paymentMethod === 'card' ||
+      formData.paymentMethod === 'bank' ||
+      (formData.paymentMethod === 'ewallet' && formData.ewalletType === 'zalopay');
+    if (isUnsupportedMethod) {
+      setFormErrors([
+        'Phương thức này chưa được hỗ trợ chính thức. Vui lòng chọn COD, Ví MoMo, VNPAY, PayPal hoặc Thẻ ATM nội địa.',
+      ]);
+      return;
+    }
 
     // Nếu chọn thanh toán qua Cổng MoMo Sandbox -> Tạo phiên và chuyển hướng sang trang MoMo
     if (formData.paymentMethod === 'ewallet' && formData.ewalletType === 'momo') {
@@ -404,7 +565,6 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
 
     if (formData.paymentMethod === 'cod') {
       try {
-        const fullAddress = `${formData.streetAddress || formData.address || ''}, ${formData.ward || ''}, ${formData.province || ''}`.trim();
         const idempotencyKey = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `IDEMP-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
         const codItems = await Promise.all(displayItems.map(async (item) => {
@@ -420,12 +580,14 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
 
         const codRes = await createCodOrderApi({
           amount: Math.round(totalVND),
-          shippingAddress: fullAddress || 'Địa chỉ nhận sách Boko',
+          shippingAddress: buildShippingAddress() || 'Địa chỉ nhận sách Boko',
           phone: formData.telephone,
           email: formData.email,
           customerName: `${formData.firstName} ${formData.lastName}`.trim(),
           couponCode: appliedDiscountCode || '',
           idempotencyKey,
+          toDistrictId: formData.districtId,
+          toWardCode: formData.wardCode,
           items: codItems,
         });
 
@@ -453,7 +615,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
       streetAddress: formData.streetAddress,
       ward: formData.ward,
       province: formData.province,
-      shippingAddress: `${formData.streetAddress || formData.address || ''}, ${formData.ward || ''}, ${formData.province || ''}`.trim(),
+      shippingAddress: buildShippingAddress() || 'Địa chỉ nhận sách Boko',
       paymentMethod: formData.paymentMethod,
     };
 
@@ -467,10 +629,10 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
       subtotalVND,
       discountEUR,
       discountVND,
-      vatEUR: 0,
-      vatVND: 0,
-      shippingEUR: 0,
-      shippingVND: 0,
+      vatEUR,
+      vatVND,
+      shippingEUR,
+      shippingVND,
       totalEUR,
       totalVND: serverConfirmedTotal,
       currency,
@@ -478,7 +640,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
       status: orderStatus,
       paymentStatus: paymentStatus,
       paymentMethod: formData.paymentMethod,
-      shippingAddress: `${formData.streetAddress || formData.address || ''}, ${formData.ward || ''}, ${formData.province || ''}`.trim(),
+      shippingAddress: buildShippingAddress() || 'Địa chỉ nhận sách Boko',
       phone: formData.telephone,
     };
 
@@ -603,7 +765,11 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                         fullName: formData.firstName,
                         phone: formData.telephone,
                         province: formData.province || formData.city || 'Hà Nội',
+                        district: formData.district || '',
                         ward: formData.ward || '',
+                        provinceId: formData.provinceId,
+                        districtId: formData.districtId,
+                        wardCode: formData.wardCode,
                         streetAddress: formData.streetAddress || formData.address
                       };
                       onSaveAddressToProfile(newAddr);
@@ -657,43 +823,120 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              {/* Tỉnh / Thành phố */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1" htmlFor="province">
-                  Tỉnh / Thành phố <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="province"
-                  type="text"
-                  value={formData.province || formData.city}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setFormData((prev) => ({ ...prev, province: val, city: val }));
-                  }}
-                  placeholder="TP. Hồ Chí Minh, Hà Nội, ĐN..."
-                  className="paper-input w-full font-body text-sm text-slate-900 placeholder:text-slate-400"
-                />
-              </div>
+            {provinces.length > 0 ? (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  {/* Tỉnh / Thành phố */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1" htmlFor="province">
+                      Tỉnh / Thành phố <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      id="province"
+                      value={formData.provinceId || ''}
+                      onChange={handleProvinceChange}
+                      className="paper-input w-full font-body text-sm text-slate-900"
+                    >
+                      <option value="">-- Chọn Tỉnh / Thành phố --</option>
+                      {provinces.map((p) => (
+                        <option key={p.province_id} value={p.province_id}>
+                          {p.province_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-              {/* Phường / Xã */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1" htmlFor="ward">
-                  Phường / Xã <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="ward"
-                  type="text"
-                  value={formData.ward || ''}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setFormData((prev) => ({ ...prev, ward: val }));
-                  }}
-                  placeholder="Phường Bến Nghé, Quận 1..."
-                  className="paper-input w-full font-body text-sm text-slate-900 placeholder:text-slate-400"
-                />
+                  {/* Quận / Huyện */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1" htmlFor="district">
+                      Quận / Huyện <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      id="district"
+                      value={formData.districtId || ''}
+                      onChange={handleDistrictChange}
+                      disabled={!formData.provinceId}
+                      className="paper-input w-full font-body text-sm text-slate-900 disabled:bg-slate-100 disabled:text-slate-400"
+                    >
+                      <option value="">-- Chọn Quận / Huyện --</option>
+                      {districts.map((d) => (
+                        <option key={d.district_id} value={d.district_id}>
+                          {d.district_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  {/* Phường / Xã */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1" htmlFor="ward">
+                      Phường / Xã <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      id="ward"
+                      value={formData.wardCode || ''}
+                      onChange={handleWardChange}
+                      disabled={!formData.districtId}
+                      className="paper-input w-full font-body text-sm text-slate-900 disabled:bg-slate-100 disabled:text-slate-400"
+                    >
+                      <option value="">-- Chọn Phường / Xã --</option>
+                      {wards.map((w) => (
+                        <option key={w.ward_code} value={w.ward_code}>
+                          {w.ward_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-end">
+                    <p className="text-[11px] text-slate-500 leading-snug">
+                      {isLoadingQuote
+                        ? 'Đang tính phí vận chuyển...'
+                        : 'Phí vận chuyển được tính tự động theo địa chỉ bạn chọn.'}
+                    </p>
+                  </div>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {/* Tỉnh / Thành phố */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1" htmlFor="province">
+                    Tỉnh / Thành phố <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="province"
+                    type="text"
+                    value={formData.province || formData.city}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setFormData((prev) => ({ ...prev, province: val, city: val }));
+                    }}
+                    placeholder="TP. Hồ Chí Minh, Hà Nội, ĐN..."
+                    className="paper-input w-full font-body text-sm text-slate-900 placeholder:text-slate-400"
+                  />
+                </div>
+
+                {/* Phường / Xã */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1" htmlFor="ward">
+                    Phường / Xã <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="ward"
+                    type="text"
+                    value={formData.ward || ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setFormData((prev) => ({ ...prev, ward: val }));
+                    }}
+                    placeholder="Phường Bến Nghé, Quận 1..."
+                    className="paper-input w-full font-body text-sm text-slate-900 placeholder:text-slate-400"
+                  />
+                </div>
+              </div>
+            )}
 
             {/* Tên đường / Tòa nhà / Số nhà */}
             <div>
@@ -1511,16 +1754,27 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
             )}
 
             <div className="flex justify-between">
-              <span>VAT (5%)</span>
+              <span>Thuế GTGT ({vatPercentLabel}%{vatPercentLabel === 0 ? ' – sách miễn thuế' : ''})</span>
               <span className="font-semibold text-slate-900">{formatPrice(vatEUR, vatVND)}</span>
             </div>
 
             <div className="flex justify-between">
-              <span>Shipping</span>
+              <span>Phí vận chuyển</span>
               <span className="font-semibold text-slate-900">
-                {isFreeShip ? 'FREE' : formatPrice(shippingEUR, shippingVND)}
+                {shipIsFree
+                  ? 'MIỄN PHÍ'
+                  : shippingQuote
+                  ? formatPrice(shippingEUR, shippingVND)
+                  : isLoadingQuote
+                  ? 'Đang tính...'
+                  : 'Chọn địa chỉ'}
               </span>
             </div>
+            {!shipIsFree && shippingQuote && freeShipThreshold > 0 && (
+              <p className="text-[11px] text-slate-400">
+                Miễn phí vận chuyển cho đơn từ {freeShipThreshold.toLocaleString('vi-VN')} ₫
+              </p>
+            )}
           </div>
 
           <div className="pt-5 mt-5 border-t border-slate-200 flex justify-between items-end">
@@ -1545,6 +1799,8 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
         email={formData.email}
         customerName={`${formData.firstName} ${formData.lastName}`.trim()}
         couponCode={appliedDiscountCode}
+        toDistrictId={formData.districtId}
+        toWardCode={formData.wardCode}
         items={displayItems.map((item) => ({
           book_id: item.book.id,
           title: item.book.title,

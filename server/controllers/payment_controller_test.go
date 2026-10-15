@@ -23,6 +23,8 @@ func setupTestRouter() *gin.Engine {
 
 // TestMomoIPN_InvalidSignature — Đảm bảo chữ ký giả mạo bị từ chối với 400 Bad Request
 func TestMomoIPN_InvalidSignature(t *testing.T) {
+	// Sandbox (mock) bật để có credential phiên bản test; chữ ký vẫn phải sai.
+	t.Setenv("ALLOW_MOCK_PAYMENT", "true")
 	r := setupTestRouter()
 
 	fakePayload := payments.MomoIpnRequest{
@@ -52,6 +54,7 @@ func TestMomoIPN_InvalidSignature(t *testing.T) {
 
 // TestMomoIPN_SignatureGenerationVerification — Đảm bảo chuỗi ký chuẩn của IPN được tạo và xác thực thành công
 func TestMomoIPN_SignatureGenerationVerification(t *testing.T) {
+	t.Setenv("ALLOW_MOCK_PAYMENT", "true")
 	cfg := payments.GetMomoConfig()
 
 	reqData := payments.MomoIpnRequest{
@@ -90,4 +93,28 @@ func TestMomoIPN_SignatureGenerationVerification(t *testing.T) {
 	}
 
 	t.Logf("✅ Chữ ký IPN hợp lệ đã được xác thực thành công!")
+}
+
+// TestMomoIPN_FailClosedWithoutCredentials — Khi tắt mock VÀ không có credential
+// thật, IPN phải bị chặn 503 (fail-closed), không được xử lý/ký bằng secret rỗng.
+func TestMomoIPN_FailClosedWithoutCredentials(t *testing.T) {
+	t.Setenv("ALLOW_MOCK_PAYMENT", "false")
+	t.Setenv("MOMO_PARTNER_CODE", "")
+	t.Setenv("MOMO_ACCESS_KEY", "")
+	t.Setenv("MOMO_SECRET_KEY", "")
+
+	r := setupTestRouter()
+	body, _ := json.Marshal(payments.MomoIpnRequest{
+		OrderID: "BOKO_1_1", RequestID: "REQ_1", Amount: 50000,
+		ResultCode: 0, Signature: "whatever",
+	})
+	req, _ := http.NewRequest("POST", "/api/payment/momo/ipn", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("Mong đợi 503 khi thiếu credential MoMo, nhưng nhận được: %d", w.Code)
+	}
+	t.Logf("✅ IPN bị chặn fail-closed khi thiếu credential (HTTP %d)", w.Code)
 }

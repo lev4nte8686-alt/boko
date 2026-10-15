@@ -44,3 +44,12 @@ docker-compose.override.yml
 
 # Misc
 *.local
+
+# QA (Playwright) - chi giu source, bo artifact
+qa/node_modules/
+qa/test-results/
+qa/playwright-report/
+qa/blob-report/
+qa/.cache/
+qa/.auth/
+qa/pentest_p0_report_*.json

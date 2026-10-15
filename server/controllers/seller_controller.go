@@ -216,6 +216,10 @@ func SellerUpdateOrderStatus(c *gin.Context) {
 			return
 		}
 
+		notifyOrderEmail(order.ID, "[Boko] Đơn hàng đã huỷ",
+			"Đơn hàng đã huỷ",
+			"Đơn hàng của bạn đã bị huỷ. Nếu đã thanh toán, bộ phận hỗ trợ sẽ liên hệ để hoàn tiền.")
+
 		c.JSON(http.StatusOK, gin.H{"message": "Đã hủy đơn hàng và hoàn lại tồn kho thành công!", "status": "cancelled"})
 		return
 	}
@@ -229,6 +233,10 @@ func SellerUpdateOrderStatus(c *gin.Context) {
 	if input.Status == "shipping" {
 		go autoHandoverToGHNAsync(order.ID)
 	}
+
+	notifyOrderEmail(order.ID, "[Boko] Cập nhật đơn hàng",
+		"Đơn hàng được cập nhật",
+		"Trạng thái đơn hàng của bạn vừa được cập nhật: "+input.Status+".")
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Cập nhật trạng thái đơn hàng thành công!",

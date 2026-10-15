@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -49,6 +50,10 @@ type GHNConfig struct {
 	FromWardName    string
 	FromDistrictName string
 	FromProvinceName string
+	// FromDistrictID / FromWardCode — mã điểm lấy hàng của shop, dùng để tính phí
+	// vận chuyển. Để trống thì tự tra cứu từ FromProvince/District/Ward (có cache).
+	FromDistrictID int
+	FromWardCode   string
 	ReturnName     string
 	ReturnPhone    string
 	ReturnAddress  string
@@ -83,6 +88,8 @@ func GetGHNConfig() GHNConfig {
 		FromWardName:    getEnvTrim("GHN_FROM_WARD_NAME", "Phường Bến Nghé"),
 		FromDistrictName: getEnvTrim("GHN_FROM_DISTRICT_NAME", "Quận 1"),
 		FromProvinceName: getEnvTrim("GHN_FROM_PROVINCE_NAME", "TP. Hồ Chí Minh"),
+		FromDistrictID:  getEnvInt("GHN_FROM_DISTRICT_ID", 0),
+		FromWardCode:    strings.TrimSpace(os.Getenv("GHN_FROM_WARD_CODE")),
 		ReturnName:     getEnvTrim("GHN_FROM_NAME", "Boko Bookstore"),
 		ReturnPhone:    strings.TrimSpace(os.Getenv("GHN_FROM_PHONE")),
 		ReturnAddress:  getEnvTrim("GHN_FROM_ADDRESS", "Số 1 Đường Sách, Phường Bến Nghé"),
@@ -543,6 +550,26 @@ func (c GHNConfig) ResolveDestination(address string) (*GHNDestination, error) {
 	return nil, fmt.Errorf("Không suy ra được Quận/Huyện & Phường/Xã từ địa chỉ %q. Hãy set GHN_TO_DISTRICT_ID và GHN_TO_WARD_CODE cho môi trường test", address)
 }
 
+// GHNProvince / GHNDistrict / GHNWard — master data công khai cho dropdown chọn
+// địa chỉ giao hàng ở frontend (đã chuẩn hoá snake_case).
+type GHNProvince struct {
+	ProvinceID   int    `json:"province_id"`
+	ProvinceName string `json:"province_name"`
+}
+
+type GHNDistrict struct {
+	DistrictID   int    `json:"district_id"`
+	DistrictName string `json:"district_name"`
+	ProvinceID   int    `json:"province_id"`
+}
+
+type GHNWard struct {
+	WardCode   string `json:"ward_code"`
+	WardName   string `json:"ward_name"`
+	DistrictID int    `json:"district_id"`
+}
+
+// Kiểu nhận thô từ GHN (PascalCase)
 type ghnProvince struct {
 	ProvinceID   int    `json:"ProvinceID"`
 	ProvinceName string `json:"ProvinceName"`
@@ -555,48 +582,275 @@ type ghnDistrict struct {
 }
 
 type ghnWard struct {
-	WardCode     string `json:"WardCode"`
-	WardName     string `json:"WardName"`
-	DistrictID   int    `json:"DistrictID"`
-	SupportType  int    `json:"SupportType"`
+	WardCode    string `json:"WardCode"`
+	WardName    string `json:"WardName"`
+	DistrictID  int    `json:"DistrictID"`
+	SupportType int    `json:"SupportType"`
 }
 
-// lookupDestination — tra cứu theo tên qua master data GHN
+// ghnMasterData — vỏ phản hồi chung của API master-data GHN v2:
+// {"code":200,"message":"Success","data":[...]}
+type ghnMasterData[T any] struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Data    []T    `json:"data"`
+}
+
+// ==================== CACHE MASTER DATA (GIẢM GỌI GHN) ====================
+
+const masterDataTTL = 6 * time.Hour
+
+type masterDataEntry[T any] struct {
+	value     T
+	expiresAt time.Time
+}
+
+var (
+	masterDataMu   sync.Mutex
+	provincesCache masterDataEntry[[]GHNProvince]
+	districtsCache = map[int]masterDataEntry[[]GHNDistrict]{}
+	wardsCache     = map[int]masterDataEntry[[]GHNWard]{}
+)
+
+// ListProvinces — danh sách Tỉnh/Thành phố từ GHN (có cache 6 giờ)
+func ListProvinces() ([]GHNProvince, error) {
+	cfg := GetGHNConfig()
+	if !cfg.IsConfigured() {
+		return nil, cfg.NotConfiguredError()
+	}
+
+	masterDataMu.Lock()
+	if provincesCache.value != nil && time.Now().Before(provincesCache.expiresAt) {
+		v := provincesCache.value
+		masterDataMu.Unlock()
+		return v, nil
+	}
+	masterDataMu.Unlock()
+
+	var resp ghnMasterData[ghnProvince]
+	if err := cfg.doRequest(http.MethodGet, "/shiip/public-api/master-data/province", nil, &resp); err != nil {
+		return nil, err
+	}
+	if resp.Code != 200 {
+		return nil, fmt.Errorf("GHN master-data (province) lỗi: %s", resp.Message)
+	}
+	out := make([]GHNProvince, 0, len(resp.Data))
+	for _, p := range resp.Data {
+		out = append(out, GHNProvince{ProvinceID: p.ProvinceID, ProvinceName: p.ProvinceName})
+	}
+
+	masterDataMu.Lock()
+	provincesCache = masterDataEntry[[]GHNProvince]{value: out, expiresAt: time.Now().Add(masterDataTTL)}
+	masterDataMu.Unlock()
+	return out, nil
+}
+
+// ListDistricts — danh sách Quận/Huyện theo Tỉnh/Thành (có cache 6 giờ)
+func ListDistricts(provinceID int) ([]GHNDistrict, error) {
+	cfg := GetGHNConfig()
+	if !cfg.IsConfigured() {
+		return nil, cfg.NotConfiguredError()
+	}
+	if provinceID <= 0 {
+		return nil, fmt.Errorf("thiếu province_id")
+	}
+
+	masterDataMu.Lock()
+	if e, ok := districtsCache[provinceID]; ok && e.value != nil && time.Now().Before(e.expiresAt) {
+		v := e.value
+		masterDataMu.Unlock()
+		return v, nil
+	}
+	masterDataMu.Unlock()
+
+	var resp ghnMasterData[ghnDistrict]
+	if err := cfg.doRequest(http.MethodGet,
+		fmt.Sprintf("/shiip/public-api/master-data/district?province_id=%d", provinceID), nil, &resp); err != nil {
+		return nil, err
+	}
+	if resp.Code != 200 {
+		return nil, fmt.Errorf("GHN master-data (district) lỗi: %s", resp.Message)
+	}
+	out := make([]GHNDistrict, 0, len(resp.Data))
+	for _, d := range resp.Data {
+		out = append(out, GHNDistrict{DistrictID: d.DistrictID, DistrictName: d.DistrictName, ProvinceID: d.ProvinceID})
+	}
+
+	masterDataMu.Lock()
+	districtsCache[provinceID] = masterDataEntry[[]GHNDistrict]{value: out, expiresAt: time.Now().Add(masterDataTTL)}
+	masterDataMu.Unlock()
+	return out, nil
+}
+
+// ListWards — danh sách Phường/Xã theo Quận/Huyện (có cache 6 giờ)
+func ListWards(districtID int) ([]GHNWard, error) {
+	cfg := GetGHNConfig()
+	if !cfg.IsConfigured() {
+		return nil, cfg.NotConfiguredError()
+	}
+	if districtID <= 0 {
+		return nil, fmt.Errorf("thiếu district_id")
+	}
+
+	masterDataMu.Lock()
+	if e, ok := wardsCache[districtID]; ok && e.value != nil && time.Now().Before(e.expiresAt) {
+		v := e.value
+		masterDataMu.Unlock()
+		return v, nil
+	}
+	masterDataMu.Unlock()
+
+	var resp ghnMasterData[ghnWard]
+	if err := cfg.doRequest(http.MethodGet,
+		fmt.Sprintf("/shiip/public-api/master-data/ward?district_id=%d", districtID), nil, &resp); err != nil {
+		return nil, err
+	}
+	if resp.Code != 200 {
+		return nil, fmt.Errorf("GHN master-data (ward) lỗi: %s", resp.Message)
+	}
+	out := make([]GHNWard, 0, len(resp.Data))
+	for _, w := range resp.Data {
+		out = append(out, GHNWard{WardCode: w.WardCode, WardName: w.WardName, DistrictID: w.DistrictID})
+	}
+
+	masterDataMu.Lock()
+	wardsCache[districtID] = masterDataEntry[[]GHNWard]{value: out, expiresAt: time.Now().Add(masterDataTTL)}
+	masterDataMu.Unlock()
+	return out, nil
+}
+
+// ==================== ĐIỂM LẤY HÀNG + PHÍ VẬN CHUYỂN ====================
+
+var originCache struct {
+	sync.Mutex
+	districtID int
+	wardCode   string
+	resolved   bool
+}
+
+// Origin — mã Quận/Huyện + Phường/Xã điểm lấy hàng của shop. Ưu tiên biến môi
+// trường GHN_FROM_DISTRICT_ID / GHN_FROM_WARD_CODE; nếu thiếu thì tự tra cứu
+// theo tên địa chỉ shop (kết quả được cache).
+func (c GHNConfig) Origin() (int, string, error) {
+	if c.FromDistrictID > 0 && c.FromWardCode != "" {
+		return c.FromDistrictID, c.FromWardCode, nil
+	}
+	if !c.IsConfigured() {
+		return 0, "", c.NotConfiguredError()
+	}
+
+	originCache.Lock()
+	defer originCache.Unlock()
+	if originCache.resolved {
+		return originCache.districtID, originCache.wardCode, nil
+	}
+
+	dest, err := c.lookupDestination(c.FromProvinceName, c.FromDistrictName, c.FromWardName)
+	if err != nil {
+		return 0, "", err
+	}
+	originCache.districtID = dest.DistrictID
+	originCache.wardCode = dest.WardCode
+	originCache.resolved = true
+	return dest.DistrictID, dest.WardCode, nil
+}
+
+// GHNFeeResponse — phản hồi API tính phí vận chuyển (v2/shipping-order/fee)
+type GHNFeeResponse struct {
+	Code        int    `json:"code"`
+	Message     string `json:"message"`
+	CodeMessage string `json:"code_message"`
+	Data        struct {
+		Total        int64 `json:"total"`
+		ServiceFee   int64 `json:"service_fee"`
+		InsuranceFee int64 `json:"insurance_fee"`
+	} `json:"data"`
+}
+
+// CalcGHNFee — tính phí vận chuyển (VND) từ shop đến Quận/Huyện + Phường/Xã người nhận.
+// weightGram: tổng khối lượng bưu kiện; insuranceValue: giá trị khai báo (0 = không).
+func CalcGHNFee(toDistrictID int, toWardCode string, weightGram int, insuranceValue int) (int64, error) {
+	cfg := GetGHNConfig()
+	if !cfg.IsConfigured() {
+		return 0, cfg.NotConfiguredError()
+	}
+	if toDistrictID <= 0 || strings.TrimSpace(toWardCode) == "" {
+		return 0, fmt.Errorf("thiếu quận/huyện hoặc phường/xã người nhận")
+	}
+
+	fromDistrict, fromWard, err := cfg.Origin()
+	if err != nil {
+		return 0, err
+	}
+	if weightGram <= 0 {
+		weightGram = cfg.PackageWeight + cfg.ItemWeight
+	}
+	if insuranceValue < 0 {
+		insuranceValue = 0
+	}
+
+	req := map[string]interface{}{
+		"from_district_id": fromDistrict,
+		"from_ward_code":   fromWard,
+		"service_type_id":  cfg.ServiceTypeID,
+		"to_district_id":   toDistrictID,
+		"to_ward_code":     toWardCode,
+		"weight":           weightGram,
+		"length":           cfg.Length,
+		"width":            cfg.Width,
+		"height":           cfg.Height,
+		"insurance_value":  insuranceValue,
+	}
+
+	var out GHNFeeResponse
+	if err := cfg.doRequest(http.MethodPost, "/shiip/public-api/v2/shipping-order/fee", req, &out); err != nil {
+		return 0, err
+	}
+	if out.Code != 200 {
+		msg := strings.TrimSpace(out.CodeMessage)
+		if msg == "" {
+			msg = strings.TrimSpace(out.Message)
+		}
+		if msg == "" {
+			msg = "không rõ nguyên nhân"
+		}
+		return 0, fmt.Errorf("GHN không tính được phí vận chuyển: %s", msg)
+	}
+	return out.Data.Total, nil
+}
+
+// lookupDestination — tra cứu theo tên qua master data GHN (đã cache)
 func (c GHNConfig) lookupDestination(provinceName, districtName, wardName string) (*GHNDestination, error) {
 	if !c.IsConfigured() {
 		return nil, c.NotConfiguredError()
 	}
 
 	// 1) Tỉnh/Thành phố
-	var provinces []ghnProvince
-	if err := c.doRequest(http.MethodGet, "/shiip/public-api/master-data/province", nil, &provinces); err != nil || len(provinces) == 0 {
+	provinces, err := ListProvinces()
+	if err != nil || len(provinces) == 0 {
 		return nil, fmt.Errorf("không lấy được danh sách tỉnh/thành từ GHN")
 	}
-	prov := findByName(provinces, normalizeProvince(provinceName), func(p ghnProvince) string { return p.ProvinceName })
+	prov := findByName(provinces, normalizeProvince(provinceName), func(p GHNProvince) string { return p.ProvinceName })
 	if prov.ProvinceID == 0 {
 		return nil, fmt.Errorf("không tìm thấy tỉnh/thành %q trên GHN", provinceName)
 	}
 
 	// 2) Quận/Huyện
-	var districts []ghnDistrict
-	if err := c.doRequest(http.MethodGet,
-		fmt.Sprintf("/shiip/public-api/master-data/district?province_id=%d", prov.ProvinceID),
-		nil, &districts); err != nil {
+	districts, err := ListDistricts(prov.ProvinceID)
+	if err != nil {
 		return nil, err
 	}
-	dist := findByName(districts, districtName, func(d ghnDistrict) string { return d.DistrictName })
+	dist := findByName(districts, districtName, func(d GHNDistrict) string { return d.DistrictName })
 	if dist.DistrictID == 0 {
 		return nil, fmt.Errorf("không tìm thấy quận/huyện %q trên GHN", districtName)
 	}
 
 	// 3) Phường/Xã
-	var wards []ghnWard
-	if err := c.doRequest(http.MethodGet,
-		fmt.Sprintf("/shiip/public-api/master-data/ward?district_id=%d", dist.DistrictID),
-		nil, &wards); err != nil {
+	wards, err := ListWards(dist.DistrictID)
+	if err != nil {
 		return nil, err
 	}
-	ward := findByName(wards, wardName, func(w ghnWard) string { return w.WardName })
+	ward := findByName(wards, wardName, func(w GHNWard) string { return w.WardName })
 	if ward.WardCode == "" {
 		return nil, fmt.Errorf("không tìm thấy phường/xã %q trên GHN", wardName)
 	}

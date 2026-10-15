@@ -23,6 +23,20 @@ func SetupRoutes(r *gin.Engine) {
 	r.POST("/api/auth/register", controllers.Register)
 	r.POST("/api/auth/logout", controllers.Logout)
 
+	// Đặt lại mật khẩu (quên mật khẩu) — token dùng 1 lần gửi qua email
+	r.POST("/api/auth/forgot-password", controllers.ForgotPassword)
+	r.POST("/api/auth/reset-password", controllers.ResetPassword)
+
+	// Thông tin shop (pháp lý/footer/hoá đơn)
+	r.GET("/api/shop", controllers.GetShopInfo)
+
+	// Giao hàng: địa chỉ (master data GHN) + phí vận chuyển + cấu hình giá
+	r.GET("/api/shipping/provinces", controllers.GetShippingProvinces)
+	r.GET("/api/shipping/districts", controllers.GetShippingDistricts)
+	r.GET("/api/shipping/wards", controllers.GetShippingWards)
+	r.POST("/api/shipping/quote", controllers.QuoteShippingFee)
+	r.GET("/api/pricing", controllers.GetPricingConfig)
+
 	// Books (public)
 	r.GET("/api/books", controllers.GetBooks)
 	r.GET("/api/books/:id", controllers.GetBook)
@@ -59,6 +73,9 @@ func SetupRoutes(r *gin.Engine) {
 	r.POST("/api/orders/cod/create", middleware.AuthOptional, controllers.CreateCodOrder)
 	r.POST("/api/orders/:id/confirm-receipt", middleware.AuthOptional, controllers.ConfirmReceiptOrder)
 	r.GET("/api/orders/my-orders", middleware.AuthOptional, controllers.GetMyOrders)
+
+	// Hoá đơn đơn hàng (chủ đơn đăng nhập, hoặc khách có ?key=)
+	r.GET("/api/orders/:id/invoice", middleware.AuthOptional, controllers.GetOrderInvoice)
 
 	// Thẻ ATM Nội Địa NCB — Xác thực OTP 1-chạm
 	r.POST("/api/payment/atm/verify-otp", middleware.AuthOptional, controllers.VerifyAtmOtpPayment)
@@ -118,5 +135,8 @@ func SetupRoutes(r *gin.Engine) {
 		auth.GET("/seller/books", middleware.SellerRequired, controllers.SellerGetBooks)
 		auth.GET("/seller/orders", middleware.SellerRequired, controllers.SellerGetOrders)
 		auth.PUT("/seller/orders/:id/status", middleware.SellerRequired, controllers.SellerUpdateOrderStatus)
+
+		// Admin — nhật ký email giao dịch (đối soát/kiểm thử)
+		auth.GET("/admin/email-logs", middleware.AdminRequired, controllers.GetEmailLogs)
 	}
 }

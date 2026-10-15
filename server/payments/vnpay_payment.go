@@ -10,16 +10,22 @@ type VnPayConfig struct {
 	IpnURL     string
 }
 
-// GetVnPayConfig — đọc cấu hình từ biến môi trường, có fallback về Sandbox Test Credentials chuẩn
+// GetVnPayConfig — đọc cấu hình từ biến môi trường. TmnCode/HashSecret KHÔNG
+// còn fallback công khai ngoài môi trường mock (xem secretEnv ở momo_payment.go).
 func GetVnPayConfig() VnPayConfig {
 	return VnPayConfig{
-		TmnCode:    getEnv("VNPAY_TMN_CODE", "VWWK6YKC"),
-		HashSecret: getEnv("VNPAY_HASH_SECRET", "GWGVHNWAWGMSFFWQSUIJNYZPKZPGKXQD"),
+		TmnCode:    secretEnv("VNPAY_TMN_CODE", "VWWK6YKC"),
+		HashSecret: secretEnv("VNPAY_HASH_SECRET", "GWGVHNWAWGMSFFWQSUIJNYZPKZPGKXQD"),
 		BaseURL:    getEnv("VNPAY_BASE_URL", "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html"),
 		APIURL:     getEnv("VNPAY_API_URL", "https://sandbox.vnpayment.vn/merchant_webapi/api/transaction"),
 		ReturnURL:  getEnv("VNPAY_RETURN_URL", "http://localhost:3000/payment/vnpay-callback"),
 		IpnURL:     getEnv("VNPAY_IPN_URL", "http://localhost:8080/api/payment/vnpay/ipn"),
 	}
+}
+
+// IsConfigured — true khi đã có đủ credential để gọi VNPAY (env thật hoặc sandbox mock).
+func (c VnPayConfig) IsConfigured() bool {
+	return c.TmnCode != "" && c.HashSecret != ""
 }
 
 // VnPayIpnResponse — phản hồi bắt buộc cho máy chủ VNPAY khi nhận Webhook IPN

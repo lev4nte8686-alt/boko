@@ -8,6 +8,7 @@ interface OrderSuccessModalProps {
   onClose: () => void;
   onReturnToLibrary: () => void;
   onOpenOrders?: () => void;
+  onOpenInvoice?: () => void;
 }
 
 export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({
@@ -16,6 +17,7 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({
   onClose,
   onReturnToLibrary,
   onOpenOrders,
+  onOpenInvoice,
 }) => {
   if (!isOpen || !order) return null;
 
@@ -120,7 +122,7 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({
           )}
 
           <div className="flex justify-between">
-            <span>VAT (5%)</span>
+            <span>Thuế GTGT</span>
             <span>{formatPrice(order.vatEUR, order.vatVND)}</span>
           </div>
 
@@ -150,6 +152,20 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({
             >
               <i className="fa-solid fa-box-archive text-sm"></i>
               <span>Xem Đơn Hàng Của Tôi</span>
+            </button>
+          )}
+
+          {onOpenInvoice && (
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onOpenInvoice();
+              }}
+              className="bg-white hover:bg-slate-50 text-slate-700 py-3 px-5 rounded-lg font-label-caps text-xs tracking-wider uppercase font-bold flex items-center justify-center gap-2 border border-slate-300 transition-all cursor-pointer"
+            >
+              <i className="fa-solid fa-file-invoice text-sm"></i>
+              <span>In hoá đơn</span>
             </button>
           )}
 

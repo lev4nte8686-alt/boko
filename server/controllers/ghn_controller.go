@@ -1,6 +1,7 @@
 ﻿package controllers
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -469,16 +470,19 @@ func SyncOrderShipment(c *gin.Context) {
 func GHNWebhook(c *gin.Context) {
 	cfg := services.GetGHNConfig()
 
-	// Xác thực webhook nếu có cấu hình secret
-	if cfg.WebhookSecret != "" {
-		incoming := c.GetHeader("X-GHN-Webhook-Secret")
-		if incoming == "" {
-			incoming = c.Query("secret")
-		}
-		if incoming != cfg.WebhookSecret {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Webhook secret không đúng"})
-			return
-		}
+	// Bắt buộc xác thực webhook (fail-closed): nếu chưa cấu hình secret thì từ chối
+	// để không ai giả mạo sự kiện đổi trạng thái đơn hàng.
+	if cfg.WebhookSecret == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "GHN webhook chưa được cấu hình secret"})
+		return
+	}
+	incoming := c.GetHeader("X-GHN-Webhook-Secret")
+	if incoming == "" {
+		incoming = c.Query("secret")
+	}
+	if subtle.ConstantTimeCompare([]byte(incoming), []byte(cfg.WebhookSecret)) != 1 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Webhook secret không đúng"})
+		return
 	}
 
 	var event struct {

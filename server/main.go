@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,6 +20,18 @@ import (
 	pmiddleware "boko/payments/middleware"
 	"boko/routes"
 )
+
+// rateLimitPerMinute — số request tối đa mỗi IP mỗi phút. Mặc định 120 (giữ
+// nguyên cho production); có thể nới khi chạy QA/e2e local qua env
+// RATE_LIMIT_PER_MINUTE (KHÔNG set ở prod).
+func rateLimitPerMinute() int {
+	if raw := strings.TrimSpace(os.Getenv("RATE_LIMIT_PER_MINUTE")); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			return n
+		}
+	}
+	return 120
+}
 
 func main() {
 	// Đọc biến môi trường từ server/.env khi chạy local dev
@@ -50,6 +63,8 @@ func main() {
 		&models.Coupon{},
 		&models.Shipment{},
 		&models.ShipmentEvent{},
+		&models.PasswordResetToken{},
+		&models.EmailLog{},
 	)
 
 	// Tạo router Gin
@@ -57,7 +72,7 @@ func main() {
 	// Tự sửa path thừa dấu / (vd //api/... do base URL có trailing slash) thay vì 404.
 	r.RedirectFixedPath = true
 	r.Use(pmiddleware.NewRedactingLogger())
-	r.Use(pmiddleware.RateLimitMiddleware(120, 1*time.Minute, func(c *gin.Context) string {
+	r.Use(pmiddleware.RateLimitMiddleware(rateLimitPerMinute(), 1*time.Minute, func(c *gin.Context) string {
 		return c.ClientIP()
 	}))
 

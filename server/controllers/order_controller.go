@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -13,9 +14,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"boko/config"
 	"boko/models"
+	"boko/services"
 )
 
 // generateTrackingToken — mã tra cứu đơn ngẫu nhiên 256-bit cho khách vãng lai.
@@ -108,12 +111,15 @@ func CreateOrder(c *gin.Context) {
 		order := models.Order{
 			UserID:          userID.(uint),
 			Total:           finalTotal,
+			Subtotal:        total,
+			DiscountAmount:  total - finalTotal,
 			Status:          "pending",
 			ShippingAddress: input.ShippingAddress,
 			Phone:           input.Phone,
 			PaymentMethod:   input.PaymentMethod,
 			CouponCode:      input.CouponCode,
 			DiscountPercent: discountPercent,
+			StockDeducted:   true,
 			TrackingToken:   generateTrackingToken(),
 			CreatedAt:       time.Now(),
 		}
@@ -134,10 +140,14 @@ func CreateOrder(c *gin.Context) {
 				return err
 			}
 
-			// Trừ tồn kho
-			if err := tx.Model(&models.Book{}).Where("id = ?", item.BookID).
-				Update("stock", gorm.Expr("stock - ?", item.Quantity)).Error; err != nil {
-				return err
+			// Trừ tồn kho có điều kiện nguyên tử (không cho âm kho)
+			res := tx.Model(&models.Book{}).Where("id = ? AND stock >= ?", item.BookID, item.Quantity).
+				Update("stock", gorm.Expr("stock - ?", item.Quantity))
+			if res.Error != nil {
+				return res.Error
+			}
+			if res.RowsAffected == 0 {
+				return errors.New("Sách \"" + item.Title + "\" vừa hết hàng trong kho")
 			}
 		}
 
@@ -236,11 +246,75 @@ func applyCouponAtomic(tx *gorm.DB, code string) (int, error) {
 	return coupon.DiscountPercent, nil
 }
 
+// resolveCouponReadOnly — tra cứu mã giảm giá mà KHÔNG tăng lượt dùng.
+// Dùng cho báo giá/preview phí vận chuyển. Trả lỗi mô tả khi mã không hợp lệ.
+func resolveCouponReadOnly(code string) (int, error) {
+	cleanCode := strings.TrimSpace(code)
+	if cleanCode == "" {
+		return 0, nil
+	}
+	var coupon models.Coupon
+	if err := config.DB.Where("code = ? AND is_active = ?", cleanCode, true).First(&coupon).Error; err != nil {
+		return 0, fmt.Errorf("Mã giảm giá \"%s\" không tồn tại hoặc đã bị khóa", cleanCode)
+	}
+	if time.Now().After(coupon.ExpiresAt) {
+		return 0, fmt.Errorf("Mã giảm giá \"%s\" đã hết hạn sử dụng", cleanCode)
+	}
+	if coupon.UsedCount >= coupon.MaxUses {
+		return 0, fmt.Errorf("Mã giảm giá \"%s\" đã hết lượt sử dụng", cleanCode)
+	}
+	return coupon.DiscountPercent, nil
+}
+
+// finalizeOrderCharges — sau khi đơn đã được tạo & trừ kho (subtotal/
+// discount_amount đã chuẩn từ DB), tính phí vận chuyển (theo GHN nếu có mã địa
+// chỉ) và VAT rồi cập nhật lại đơn.
+// total = subtotal − discount_amount + shipping_fee + vat_amount.
+func finalizeOrderCharges(order *models.Order, toDistrictID int, toWardCode string, totalQuantity int, couponCode string) {
+	afterDiscount := order.Subtotal - order.DiscountAmount
+	if afterDiscount < 0 {
+		afterDiscount = 0
+	}
+
+	weightGram := services.PackageWeightForItems(totalQuantity)
+	quote, feeErr := services.ResolveShippingFeeDetail(
+		afterDiscount, toDistrictID, strings.TrimSpace(toWardCode), weightGram, afterDiscount,
+		services.IsFreeShipCoupon(couponCode),
+	)
+	if feeErr != nil {
+		log.Printf("cảnh báo tính phí vận chuyển đơn #%d: %v (dùng phí tạm tính %.0f)", order.ID, feeErr, quote.Fee)
+	}
+
+	vatPercent := services.VatPercent()
+	vatAmount := afterDiscount * float64(vatPercent) / 100
+	total := afterDiscount + quote.Fee + vatAmount
+
+	config.DB.Model(&models.Order{}).Where("id = ?", order.ID).Updates(map[string]interface{}{
+		"shipping_fee":    quote.Fee,
+		"vat_percent":     vatPercent,
+		"vat_amount":      vatAmount,
+		"ship_fee_source": quote.Source,
+		"total":           total,
+		"to_district_id":  toDistrictID,
+		"to_ward_code":    strings.TrimSpace(toWardCode),
+	})
+
+	order.ShippingFee = quote.Fee
+	order.VatPercent = vatPercent
+	order.VatAmount = vatAmount
+	order.ShipFeeSource = quote.Source
+	order.Total = total
+	order.ToDistrictID = toDistrictID
+	order.ToWardCode = strings.TrimSpace(toWardCode)
+}
+
 // GetOrderQuote — Báo giá chuẩn từ Backend trước khi người mua chốt đơn hàng
 func GetOrderQuote(c *gin.Context) {
 	var input struct {
-		CouponCode string `json:"coupon_code"`
-		Items      []struct {
+		CouponCode   string `json:"coupon_code"`
+		ToDistrictID int    `json:"to_district_id"`
+		ToWardCode   string `json:"to_ward_code"`
+		Items        []struct {
 			BookID   uint `json:"book_id" binding:"required,gt=0"`
 			Quantity int  `json:"quantity" binding:"required,gt=0"`
 		} `json:"items" binding:"required,min=1,dive"`
@@ -252,6 +326,7 @@ func GetOrderQuote(c *gin.Context) {
 	}
 
 	var subtotal float64
+	totalQuantity := 0
 	for _, it := range input.Items {
 		if it.Quantity <= 0 || it.BookID == 0 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Mặt hàng hoặc số lượng không hợp lệ"})
@@ -267,63 +342,44 @@ func GetOrderQuote(c *gin.Context) {
 			return
 		}
 		subtotal += book.Price * float64(it.Quantity)
+		totalQuantity += it.Quantity
 	}
 
-	discountPercent := 0
 	cleanCode := strings.TrimSpace(input.CouponCode)
-	if cleanCode != "" {
-		var coupon models.Coupon
-		if err := config.DB.Where("code = ? AND is_active = ?", cleanCode, true).First(&coupon).Error; err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Mã giảm giá \"%s\" không tồn tại hoặc đã bị khóa", cleanCode)})
-			return
-		}
-		if time.Now().After(coupon.ExpiresAt) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Mã giảm giá \"%s\" đã hết hạn sử dụng", cleanCode)})
-			return
-		}
-		if coupon.UsedCount >= coupon.MaxUses {
-			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Mã giảm giá \"%s\" đã hết lượt sử dụng", cleanCode)})
-			return
-		}
-		discountPercent = coupon.DiscountPercent
+	discountPercent, err := resolveCouponReadOnly(cleanCode)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 
 	discountAmount := subtotal * float64(discountPercent) / 100
-	finalTotal := subtotal - discountAmount
+	afterDiscount := subtotal - discountAmount
+
+	// Phí vận chuyển + VAT (cùng công thức với lúc tạo đơn)
+	weightGram := services.PackageWeightForItems(totalQuantity)
+	quote, _ := services.ResolveShippingFeeDetail(afterDiscount, input.ToDistrictID, strings.TrimSpace(input.ToWardCode), weightGram, afterDiscount, services.IsFreeShipCoupon(cleanCode))
+	vatPercent := services.VatPercent()
+	vatAmount := afterDiscount * float64(vatPercent) / 100
 
 	c.JSON(http.StatusOK, gin.H{
-		"subtotal":         subtotal,
-		"discount_percent": discountPercent,
-		"discount_amount":  discountAmount,
-		"total":            finalTotal,
-		"coupon_code":      cleanCode,
+		"subtotal":                subtotal,
+		"discount_percent":        discountPercent,
+		"discount_amount":         discountAmount,
+		"subtotal_after_discount": afterDiscount,
+		"shipping_fee":            quote.Fee,
+		"free_ship":               quote.Free,
+		"ship_fee_source":         quote.Source,
+		"vat_percent":             vatPercent,
+		"vat_amount":              vatAmount,
+		"free_ship_threshold":     services.FreeShipThreshold(),
+		"total":                   afterDiscount + quote.Fee + vatAmount,
+		"coupon_code":             cleanCode,
 	})
 }
 
 // CreateCodOrder — Đặt hàng COD: Kiểm tra tồn kho, tính lại giá từ DB và trừ kho trong Transaction
 func CreateCodOrder(c *gin.Context) {
 	idempotencyKey := strings.TrimSpace(c.GetHeader("X-Idempotency-Key"))
-	if idempotencyKey != "" {
-		var existingOrders []models.Order
-		if err := config.DB.Preload("Items").Where("idempotency_key = ?", idempotencyKey).Limit(1).Find(&existingOrders).Error; err == nil && len(existingOrders) > 0 {
-			existingOrder := existingOrders[0]
-			if existingOrder.TrackingToken == "" {
-				existingOrder.TrackingToken = generateTrackingToken()
-				config.DB.Model(&models.Order{}).Where("id = ?", existingOrder.ID).Update("tracking_token", existingOrder.TrackingToken)
-			}
-			c.JSON(http.StatusOK, gin.H{
-				"message":        "Đơn hàng đã được tạo trước đó (Idempotency Key khớp)",
-				"order_id":       existingOrder.ID,
-				"order":          existingOrder,
-				"tracking_token": existingOrder.TrackingToken,
-				"total":          existingOrder.Total,
-				"status":         existingOrder.Status,
-				"payment_method": existingOrder.PaymentMethod,
-				"payment_status": existingOrder.PaymentStatus,
-			})
-			return
-		}
-	}
 
 	var input struct {
 		Amount          float64 `json:"amount"`
@@ -332,6 +388,8 @@ func CreateCodOrder(c *gin.Context) {
 		Email           string  `json:"email"`
 		CustomerName    string  `json:"customer_name"`
 		CouponCode      string  `json:"coupon_code"`
+		ToDistrictID    int     `json:"to_district_id"`
+		ToWardCode      string  `json:"to_ward_code"`
 		Items           []struct {
 			BookID   uint    `json:"book_id" binding:"required,gt=0"`
 			Title    string  `json:"title"`
@@ -381,7 +439,37 @@ func CreateCodOrder(c *gin.Context) {
 		currentUserID = user.ID
 	}
 
+	// Idempotency: chỉ tra cứu đơn CỦA CHÍNH user hiện tại (chống IDOR/lộ dữ liệu
+	// đơn người khác khi idempotency key bị trùng hoặc bị đoán).
+	if idempotencyKey != "" {
+		var existingOrders []models.Order
+		if err := config.DB.Preload("Items").
+			Where("idempotency_key = ? AND user_id = ?", idempotencyKey, currentUserID).
+			Limit(1).Find(&existingOrders).Error; err == nil && len(existingOrders) > 0 {
+			existingOrder := existingOrders[0]
+			if existingOrder.TrackingToken == "" {
+				existingOrder.TrackingToken = generateTrackingToken()
+				config.DB.Model(&models.Order{}).Where("id = ?", existingOrder.ID).Update("tracking_token", existingOrder.TrackingToken)
+			}
+			c.JSON(http.StatusOK, gin.H{
+				"message":        "Đơn hàng đã được tạo trước đó (Idempotency Key khớp)",
+				"order_id":       existingOrder.ID,
+				"order":          existingOrder,
+				"tracking_token": existingOrder.TrackingToken,
+				"total":          existingOrder.Total,
+				"status":         existingOrder.Status,
+				"payment_method": existingOrder.PaymentMethod,
+				"payment_status": existingOrder.PaymentStatus,
+			})
+			return
+		}
+	}
+
 	var createdOrder models.Order
+
+	// Đích đến cho phí vận chuyển: ưu tiên mã GHN client gửi, thiếu thì tra từ địa chỉ.
+	toDistrictID, toWardCode := resolveToDestination(input.ToDistrictID, input.ToWardCode, cleanAddress)
+	var orderTotalQuantity int
 
 	// 2. TRANSACTION: KIỂM TRA TỒN KHO, TÍNH LẠI GIÁ VÀ TRỪ KHO NGUYÊN TỬ
 	err := config.DB.Transaction(func(tx *gorm.DB) error {
@@ -411,6 +499,7 @@ func CreateCodOrder(c *gin.Context) {
 			}
 
 			calculatedSubtotal += book.Price * float64(it.Quantity)
+			orderTotalQuantity += it.Quantity
 			validatedItems = append(validatedItems, itemValidation{
 				BookID:   book.ID,
 				Title:    book.Title,
@@ -426,12 +515,15 @@ func CreateCodOrder(c *gin.Context) {
 		}
 
 		// Tính tổng tiền an toàn từ DB (Chống Price Tampering D05)
-		finalTotal := calculatedSubtotal * float64(100-discountPercent) / 100
+		discountAmount := calculatedSubtotal * float64(discountPercent) / 100
+		finalTotal := calculatedSubtotal - discountAmount
 
 		// Tạo đơn hàng COD với cờ StockDeducted = true
 		order := models.Order{
 			UserID:          currentUserID,
-			Total:           finalTotal,
+			Total:           finalTotal, // tạm tính; phí ship + VAT cập nhật sau khi commit
+			Subtotal:        calculatedSubtotal,
+			DiscountAmount:  discountAmount,
 			Status:          "shipping", // Quyết định demo Stepper
 			PaymentStatus:   "unpaid",
 			PaymentMethod:   "cod",
@@ -482,10 +574,18 @@ func CreateCodOrder(c *gin.Context) {
 		return
 	}
 
+	// Tính phí vận chuyển (GHN) + VAT rồi cập nhật lại tổng đơn (sau khi đã trừ kho).
+	finalizeOrderCharges(&createdOrder, toDistrictID, toWardCode, orderTotalQuantity, input.CouponCode)
+
 	config.DB.Preload("Items").First(&createdOrder, createdOrder.ID)
 
 	// Tự động chuyển cho GHN quản lý vận chuyển (nền, không chặn phản hồi)
 	go autoHandoverToGHNAsync(createdOrder.ID)
+
+	// Email xác nhận đặt hàng (nền, best-effort)
+	notifyOrderEmail(createdOrder.ID, "[Boko] Đặt hàng thành công",
+		"Đặt hàng thành công",
+		"Cảm ơn bạn đã đặt hàng tại Boko. Chúng tôi sẽ liên hệ xác nhận và giao hàng sớm nhất.")
 
 	c.JSON(http.StatusCreated, gin.H{
 		"message":        "Đặt hàng COD thành công!",
@@ -551,6 +651,10 @@ func ConfirmReceiptOrder(c *gin.Context) {
 	}
 	config.DB.Save(&order)
 
+	notifyOrderEmail(order.ID, "[Boko] Đơn hàng đã hoàn tất",
+		"Đơn hàng đã hoàn tất",
+		"Cảm ơn bạn đã mua sách tại Boko. Đơn hàng đã được xác nhận hoàn tất.")
+
 	c.JSON(http.StatusOK, gin.H{
 		"message":        "Xác nhận nhận hàng thành công!",
 		"order":          order,
@@ -591,7 +695,7 @@ func CancelOrder(c *gin.Context) {
 
 	err := config.DB.Transaction(func(tx *gorm.DB) error {
 		var order models.Order
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Preload("Items").
 			Where("id = ? AND user_id = ?", orderID, userID).
 			First(&order).Error; err != nil {
@@ -640,28 +744,18 @@ func CancelOrder(c *gin.Context) {
 		return
 	}
 
+	if id64, parseErr := strconv.ParseUint(strings.TrimSpace(orderID), 10, 32); parseErr == nil && id64 > 0 {
+		notifyOrderEmail(uint(id64), "[Boko] Đơn hàng đã huỷ",
+			"Đơn hàng đã huỷ",
+			"Đơn hàng của bạn đã được huỷ thành công. Nếu đã thanh toán, bộ phận hỗ trợ sẽ liên hệ để hoàn tiền.")
+	}
+
 	c.JSON(http.StatusOK, gin.H{"message": "Đã hủy đơn hàng thành công!", "status": "cancelled"})
 }
 
 // VerifyAtmOtpPayment — Xác thực OTP Thẻ ATM Nội Địa NCB 1-chạm và hoàn tất thanh toán (Vá D03/D05)
 func VerifyAtmOtpPayment(c *gin.Context) {
 	idempotencyKey := strings.TrimSpace(c.GetHeader("X-Idempotency-Key"))
-	if idempotencyKey != "" {
-		var existingOrders []models.Order
-		if err := config.DB.Preload("Items").Where("idempotency_key = ?", idempotencyKey).Limit(1).Find(&existingOrders).Error; err == nil && len(existingOrders) > 0 {
-			existingOrder := existingOrders[0]
-			c.JSON(http.StatusOK, gin.H{
-				"success":        true,
-				"message":        "Đơn hàng ATM đã được xác nhận trước đó (Idempotency Key khớp)",
-				"order_id":       existingOrder.ID,
-				"transaction_id": existingOrder.PaymentTransID,
-				"total":          existingOrder.Total,
-				"payment_status": existingOrder.PaymentStatus,
-				"status":         existingOrder.Status,
-			})
-			return
-		}
-	}
 
 	var input struct {
 		Amount          float64 `json:"amount"`
@@ -674,6 +768,8 @@ func VerifyAtmOtpPayment(c *gin.Context) {
 		Email           string  `json:"email"`
 		CustomerName    string  `json:"customer_name"`
 		CouponCode      string  `json:"coupon_code"`
+		ToDistrictID    int     `json:"to_district_id"`
+		ToWardCode      string  `json:"to_ward_code"`
 		Items           []struct {
 			BookID   uint    `json:"book_id" binding:"required,gt=0"`
 			Title    string  `json:"title"`
@@ -695,7 +791,15 @@ func VerifyAtmOtpPayment(c *gin.Context) {
 		return
 	}
 
-	// 2. Kiểm tra mã OTP: Sandbox test OTP là 123456
+	// 2. Fail-closed: luồng OTP NCB này là SANDBOX demo (OTP cố định 123456), chỉ mở
+	// khi ALLOW_MOCK_PAYMENT=true. Production từ chối để không ai tự đánh dấu đơn
+	// "đã thanh toán" mà không đi qua cổng thật.
+	if !mockPaymentEnabled() {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Thanh toán thẻ ATM nội địa chưa khả dụng ở môi trường này"})
+		return
+	}
+
+	// Sandbox test OTP là 123456
 	if input.Otp != "123456" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Mã xác thực OTP không chính xác. Vui lòng nhập mã OTP test: 123456",
@@ -732,8 +836,32 @@ func VerifyAtmOtpPayment(c *gin.Context) {
 		currentUserID = user.ID
 	}
 
+	// Idempotency: chỉ trả đơn CỦA CHÍNH user hiện tại (chống IDOR/lộ dữ liệu).
+	if idempotencyKey != "" {
+		var existingOrders []models.Order
+		if err := config.DB.Preload("Items").
+			Where("idempotency_key = ? AND user_id = ?", idempotencyKey, currentUserID).
+			Limit(1).Find(&existingOrders).Error; err == nil && len(existingOrders) > 0 {
+			existingOrder := existingOrders[0]
+			c.JSON(http.StatusOK, gin.H{
+				"success":        true,
+				"message":        "Đơn hàng ATM đã được xác nhận trước đó (Idempotency Key khớp)",
+				"order_id":       existingOrder.ID,
+				"transaction_id": existingOrder.PaymentTransID,
+				"total":          existingOrder.Total,
+				"payment_status": existingOrder.PaymentStatus,
+				"status":         existingOrder.Status,
+			})
+			return
+		}
+	}
+
 	transID := fmt.Sprintf("NCB_OTP_%d", time.Now().Unix())
 	var createdOrder models.Order
+
+	// Đích đến cho phí vận chuyển: ưu tiên mã GHN client gửi, thiếu thì tra từ địa chỉ.
+	toDistrictID, toWardCode := resolveToDestination(input.ToDistrictID, input.ToWardCode, cleanAddress)
+	var orderTotalQuantity int
 
 	// 4. TRANSACTION: KIỂM TRA TỒN KHO, TÍNH GIÁ CHUẨN DB VÀ TRỪ KHO NGUYÊN TỬ
 	err := config.DB.Transaction(func(tx *gorm.DB) error {
@@ -765,6 +893,7 @@ func VerifyAtmOtpPayment(c *gin.Context) {
 
 			// LẤY GIÁ TỪ DB ĐỂ TÍNH TIỀN (Khắc phục triệt để D05-ATM)
 			calculatedSubtotal += book.Price * float64(it.Quantity)
+			orderTotalQuantity += it.Quantity
 			validatedItems = append(validatedItems, itemValidation{
 				BookID:   book.ID,
 				Title:    book.Title,
@@ -780,11 +909,14 @@ func VerifyAtmOtpPayment(c *gin.Context) {
 		}
 
 		finalTotal := calculatedSubtotal * float64(100-discountPercent) / 100
+		discountAmount := calculatedSubtotal - finalTotal
 
 		// Tạo đơn hàng với giá chuẩn từ DB, cờ StockDeducted = true
 		order := models.Order{
 			UserID:          currentUserID,
-			Total:           finalTotal,
+			Total:           finalTotal, // tạm tính; phí ship + VAT cập nhật sau khi commit
+			Subtotal:        calculatedSubtotal,
+			DiscountAmount:  discountAmount,
 			Status:          "shipping",
 			PaymentStatus:   "paid",
 			PaymentMethod:   "atm",
@@ -837,8 +969,16 @@ func VerifyAtmOtpPayment(c *gin.Context) {
 		return
 	}
 
+	// Tính phí vận chuyển (GHN) + VAT rồi cập nhật lại tổng đơn (sau khi đã trừ kho).
+	finalizeOrderCharges(&createdOrder, toDistrictID, toWardCode, orderTotalQuantity, input.CouponCode)
+
 	// Tự động chuyển cho GHN quản lý vận chuyển (nền, không chặn phản hồi)
 	go autoHandoverToGHNAsync(createdOrder.ID)
+
+	// Email xác nhận thanh toán ATM (nền, best-effort)
+	notifyOrderEmail(createdOrder.ID, "[Boko] Thanh toán thành công",
+		"Thanh toán thành công",
+		"Boko đã nhận được thanh toán cho đơn hàng của bạn. Đơn hàng đang được xử lý.")
 
 	c.JSON(http.StatusOK, gin.H{
 		"success":        true,

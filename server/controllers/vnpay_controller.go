@@ -36,6 +36,12 @@ func CreateVnPayPayment(c *gin.Context) {
 		return
 	}
 
+	// Fail-closed: không có credential VNPAY thì từ chối tạo phiên.
+	if !payments.GetVnPayConfig().IsConfigured() {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "VNPAY chưa được cấu hình ở môi trường này"})
+		return
+	}
+
 	// Xác định user_id: ưu tiên từ JWT token đã xác thực, nếu không có thì liên kết qua email hoặc tài khoản khách
 	var currentUserID uint
 	if val, exists := c.Get("user_id"); exists {
@@ -64,13 +70,13 @@ func CreateVnPayPayment(c *gin.Context) {
 	// 1. Tìm đơn hàng có sẵn hoặc tạo đơn hàng mới nếu truyền amount
 	var order models.Order
 	if input.OrderID > 0 {
-		var err error
-		if val, exists := c.Get("user_id"); exists {
-			err = config.DB.Where("id = ? AND user_id = ?", input.OrderID, val.(uint)).First(&order).Error
-		} else {
-			err = config.DB.First(&order, input.OrderID).Error
+		// Bảo mật (chống IDOR): chỉ chủ đơn ĐÃ ĐĂNG NHẬP mới dùng order_id có sẵn.
+		val, authed := c.Get("user_id")
+		if !authed {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Vui lòng đăng nhập để thanh toán cho đơn hàng đã tạo"})
+			return
 		}
-		if err != nil {
+		if err := config.DB.Where("id = ? AND user_id = ?", input.OrderID, val.(uint)).First(&order).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy đơn hàng hoặc bạn không có quyền truy cập"})
 			return
 		}
@@ -85,11 +91,13 @@ func CreateVnPayPayment(c *gin.Context) {
 		order = models.Order{
 			UserID:          currentUserID,
 			Total:           input.Amount,
+			Subtotal:        input.Amount,
 			Status:          "pending",
 			PaymentStatus:   "unpaid",
 			PaymentMethod:   pm,
 			ShippingAddress: input.ShippingAddress,
 			Phone:           input.Phone,
+			TrackingToken:   generateTrackingToken(),
 			CreatedAt:       time.Now(),
 		}
 		if err := config.DB.Create(&order).Error; err != nil {
@@ -140,6 +148,14 @@ func VnPayIPN(c *gin.Context) {
 	queryParams := c.Request.URL.Query()
 
 	// 1. Xác thực chữ ký số HMAC-SHA512
+	// Fail-closed: thiếu credential thì không xác thực/thay đổi đơn (tránh ký bằng secret rỗng).
+	if !payments.GetVnPayConfig().IsConfigured() {
+		c.JSON(http.StatusOK, payments.VnPayIpnResponse{
+			RspCode: "99",
+			Message: "Merchant not configured",
+		})
+		return
+	}
 	if !services.VerifyVnPaySignature(queryParams) {
 		c.JSON(http.StatusOK, payments.VnPayIpnResponse{
 			RspCode: "97",
@@ -202,6 +218,9 @@ func VnPayIPN(c *gin.Context) {
 			updates["payment_method"] = "vnpay"
 		}
 		config.DB.Model(&order).Updates(updates)
+		notifyOrderEmail(order.ID, "[Boko] Thanh toán thành công",
+			"Thanh toán thành công",
+			"Boko đã nhận được thanh toán VNPAY cho đơn hàng của bạn.")
 	} else {
 		// Thanh toán thất bại hoặc người dùng hủy
 		config.DB.Model(&order).Updates(map[string]interface{}{

@@ -14,6 +14,8 @@ interface NcbOtpModalProps {
   email: string;
   customerName: string;
   couponCode?: string;
+  toDistrictId?: number;
+  toWardCode?: string;
   items: Array<{
     book_id: number | string;
     title: string;
@@ -35,6 +37,8 @@ export const NcbOtpModal: React.FC<NcbOtpModalProps> = ({
   email,
   customerName,
   couponCode,
+  toDistrictId,
+  toWardCode,
   items,
   onSuccess,
 }) => {
@@ -104,6 +108,8 @@ export const NcbOtpModal: React.FC<NcbOtpModalProps> = ({
         email,
         customerName,
         couponCode,
+        toDistrictId,
+        toWardCode,
         items: resolvedItems,
       });
 

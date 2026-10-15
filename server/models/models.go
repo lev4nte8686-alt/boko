@@ -55,7 +55,7 @@ type Cart struct {
 // Order — đơn hàng
 type Order struct {
 	ID               uint        `json:"id" gorm:"primaryKey"`
-	UserID           uint        `json:"user_id"`
+	UserID           uint        `json:"user_id" gorm:"uniqueIndex:idx_orders_user_idem,where:idempotency_key <> ''"`
 	User             *User       `json:"user,omitempty" gorm:"foreignKey:UserID"`
 	Total            float64     `json:"total"`
 	Status           string      `json:"status" gorm:"default:pending"` // pending, confirmed, shipping, completed, cancelled
@@ -68,8 +68,17 @@ type Order struct {
 	PaymentRequestID string      `json:"payment_request_id"`
 	CouponCode       string      `json:"coupon_code"`
 	DiscountPercent  int         `json:"discount_percent" gorm:"default:0"`
+	// Bóc tách tiền tệ: total = subtotal − discount_amount + shipping_fee + vat_amount
+	Subtotal         float64     `json:"subtotal"`
+	DiscountAmount   float64     `json:"discount_amount"`
+	ShippingFee      float64     `json:"shipping_fee"`
+	VatPercent       int         `json:"vat_percent" gorm:"default:0"`
+	VatAmount        float64     `json:"vat_amount"`
+	ShipFeeSource    string      `json:"ship_fee_source"` // free_coupon | free_threshold | ghn | fallback
+	ToDistrictID     int         `json:"to_district_id"`  // mã quận/huyện GHN người nhận
+	ToWardCode       string      `json:"to_ward_code"`    // mã phường/xã GHN người nhận
 	StockDeducted    bool        `json:"stock_deducted" gorm:"default:false"`
-	IdempotencyKey   string      `json:"idempotency_key" gorm:"index"`
+	IdempotencyKey   string      `json:"idempotency_key" gorm:"uniqueIndex:idx_orders_user_idem,where:idempotency_key <> ''"`
 	// TrackingToken — mã tra cứu đơn không đoán được cho khách vãng lai
 	// (thay thế tra cứu công khai bằng email). Không expose trong JSON đơn hàng.
 	TrackingToken    string      `json:"-" gorm:"index"`
@@ -149,4 +158,28 @@ type Coupon struct {
 	IsActive        bool      `json:"is_active" gorm:"default:true"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+// PasswordResetToken — phiếu đặt lại mật khẩu. KHÔNG lưu token thô: chỉ lưu
+// SHA-256 để nếu lộ DB cũng không dùng lại được. Dùng 1 lần, có hạn.
+type PasswordResetToken struct {
+	ID        uint       `json:"id" gorm:"primaryKey"`
+	UserID    uint       `json:"user_id" gorm:"index"`
+	TokenHash string     `json:"-" gorm:"uniqueIndex;not null"` // SHA-256(token) dạng hex
+	ExpiresAt time.Time  `json:"expires_at"`
+	UsedAt    *time.Time `json:"used_at"`
+	CreatedAt time.Time  `json:"created_at"`
+}
+
+// EmailLog — nhật ký email giao dịch (đối soát + kiểm thử local khi chưa cấu
+// hình provider thật). Body không trả ra API danh sách.
+type EmailLog struct {
+	ID        uint      `json:"id" gorm:"primaryKey"`
+	To        string    `json:"to" gorm:"index"`
+	Subject   string    `json:"subject"`
+	Provider  string    `json:"provider"` // resend | dev-log
+	Status    string    `json:"status"`   // sent | failed
+	Error     string    `json:"error"`
+	Body      string    `json:"-" gorm:"type:text"`
+	CreatedAt time.Time `json:"created_at"`
 }

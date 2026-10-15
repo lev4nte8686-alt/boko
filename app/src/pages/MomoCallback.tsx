@@ -21,7 +21,9 @@ export const MomoCallback: React.FC<MomoCallbackProps> = ({ onOrderSuccessFinish
   const amountStr = searchParams.get('amount') || '0';
   const amount = parseInt(amountStr, 10) || 0;
 
-  const isSuccess = resultCode === '0' || backendStatus?.payment_status === 'paid';
+  // CHỈ tin trạng thái đã được BACKEND xác thực (đồng bộ từ MoMo), KHÔNG tin
+  // tham số resultCode trên URL (có thể bị giả mạo để hiện "thành công").
+  const isSuccess = backendStatus?.payment_status === 'paid';
 
   // Trích xuất ID đơn hàng Boko từ chuỗi dạng BOKO_<id>_<timestamp> hoặc ID thuần
   const parseBokoOrderId = (momoId: string): string => {

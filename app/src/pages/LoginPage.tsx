@@ -3,7 +3,7 @@ import { Navigate, useNavigate, useLocation, Link } from 'react-router-dom';
 import { User } from '../types';
 import forestBgImg from '../assets/images/auth_forest_bg_1786582595599.jpg';
 import logoImg from '../assets/images/app_main_logo_1786578722639.jpg';
-import { loginApi, signupApi, socialLoginApi, MOCK_USER_CREDENTIALS } from '../api/auth';
+import { loginApi, signupApi, socialLoginApi, MOCK_USER_CREDENTIALS, forgotPasswordApi } from '../api/auth';
 
 interface LoginPageProps {
   user: User | null;
@@ -18,12 +18,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
-
-  // If user is already logged in, automatically redirect to home (or previous intended path)
-  if (user) {
-    const from = (location.state as any)?.from?.pathname || '/';
-    return <Navigate to={from} replace />;
-  }
 
   const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>(initialMode);
 
@@ -56,11 +50,20 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         setErrorMessage('Vui lòng nhập địa chỉ email hợp lệ.');
         return;
       }
+      // Gửi yêu cầu thật tới backend (POST /api/auth/forgot-password). Backend
+      // luôn trả 200 để không tiết lộ email có tồn tại hay không.
       setIsLoading(true);
-      setTimeout(() => {
-        setIsLoading(false);
-        setSuccessInfo('Chúng tôi đã gửi đường dẫn hướng dẫn khôi phục mật khẩu vào email của bạn.');
-      }, 800);
+      const res = await forgotPasswordApi(email);
+      setIsLoading(false);
+
+      if (res.success) {
+        setSuccessInfo(
+          res.message ||
+            'Nếu email tồn tại trong hệ thống, chúng tôi đã gửi hướng dẫn đặt lại mật khẩu. Vui lòng kiểm tra hộp thư (kể cả Spam).'
+        );
+      } else {
+        setErrorMessage(res.error || 'Không gửi được yêu cầu. Vui lòng thử lại.');
+      }
       return;
     }
 
@@ -153,6 +156,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       setErrorMessage(err?.message || 'Có lỗi xảy ra khi xác thực tài khoản.');
     }
   };
+
+  // If user is already logged in, automatically redirect to home (or previous intended path).
+  // Đặt SAU tất cả hook (Rules of Hooks): trước đây đặt trên useState nên khi
+  // user đổi từ null -> có giá trị sẽ gây crash "Rendered fewer hooks than expected".
+  if (user) {
+    const from = (location.state as any)?.from?.pathname || '/';
+    return <Navigate to={from} replace />;
+  }
 
   return (
     <div className="min-h-screen w-full relative flex items-center justify-center p-4 bg-slate-900 overflow-hidden select-none">
