@@ -1,9 +1,11 @@
 package controllers
 
 import (
+	"crypto/subtle"
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -224,20 +226,34 @@ func GetVnPayPaymentStatus(c *gin.Context) {
 	}
 
 	var order models.Order
-	var dbErr error
+	queryParams := c.Request.URL.Query()
 	if userID, exists := c.Get("user_id"); exists {
-		dbErr = config.DB.Where("id = ? AND user_id = ?", uint(orderID), userID).First(&order).Error
+		if err := config.DB.Where("id = ? AND user_id = ?", uint(orderID), userID).First(&order).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy đơn hàng"})
+			return
+		}
 	} else {
-		dbErr = config.DB.First(&order, uint(orderID)).Error
-	}
-
-	if dbErr != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy đơn hàng"})
-		return
+		// Khách vãng lai: phải chứng minh sở hữu bằng ?key= trùng PaymentOrderID,
+		// hoặc query VNPAY redirect có chữ ký HMAC hợp lệ cho đúng đơn này.
+		if err := config.DB.First(&order, uint(orderID)).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy đơn hàng"})
+			return
+		}
+		key := strings.TrimSpace(c.Query("key"))
+		keyOK := key != "" && order.PaymentOrderID != "" &&
+			subtle.ConstantTimeCompare([]byte(key), []byte(order.PaymentOrderID)) == 1
+		queryParams = c.Request.URL.Query()
+		sigOK := queryParams.Get("vnp_SecureHash") != "" &&
+			services.VerifyVnPaySignature(queryParams) &&
+			queryParams.Get("vnp_TxnRef") == order.PaymentOrderID
+		if !keyOK && !sigOK {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Thiếu mã xác thực tra cứu đơn hàng"})
+			return
+		}
 	}
 
 	// Nếu request mang các tham số xác thực từ VNPAY Return URL và chữ ký HMAC-SHA512 hợp lệ
-	queryParams := c.Request.URL.Query()
+	queryParams = c.Request.URL.Query()
 	if queryParams.Get("vnp_SecureHash") != "" && services.VerifyVnPaySignature(queryParams) {
 		responseCode := queryParams.Get("vnp_ResponseCode")
 		transactionNo := queryParams.Get("vnp_TransactionNo")

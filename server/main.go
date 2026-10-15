@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/rand"
 	"encoding/hex"
 	"log"
 	"os"
@@ -58,17 +59,37 @@ func main() {
 		return c.ClientIP()
 	}))
 
+	// Cache-Control — API trả dữ liệu nhạy cảm (đơn hàng, profile):
+	// cấm browser/proxy cache để ZAP không gắn cờ "Re-examine Cache-control".
+	r.Use(func(c *gin.Context) {
+		if strings.HasPrefix(c.Request.URL.Path, "/api/") {
+			c.Header("Cache-Control", "no-store, no-cache, must-revalidate")
+			c.Header("Pragma", "no-cache")
+		}
+	})
+
 	// CORS — cho phép React frontend (localhost:3000)
+	// Khi deploy cloud (Vercel...), thêm origin qua biến môi trường CORS_ORIGINS,
+	// nhiều origin phân tách bằng dấu phẩy. Ví dụ:
+	//   CORS_ORIGINS=https://boko-web.vercel.app,https://boko.com
+	allowOrigins := []string{
+		"http://localhost:3000",   // local dev (Vite)
+		"http://127.0.0.1:3000",  // local dev (Vite)
+		"http://localhost",        // nginx HTTP (port 80)
+		"https://localhost",       // nginx HTTPS (port 443)
+		"http://localhost:80",     // nginx HTTP explicit
+		"https://localhost:443",   // nginx HTTPS explicit
+		"https://boko.com",
+	}
+	if extra := strings.TrimSpace(os.Getenv("CORS_ORIGINS")); extra != "" {
+		for _, o := range strings.Split(extra, ",") {
+			if o = strings.TrimSpace(o); o != "" {
+				allowOrigins = append(allowOrigins, o)
+			}
+		}
+	}
 	r.Use(cors.New(cors.Config{
-		AllowOrigins: []string{
-			"http://localhost:3000",   // local dev (Vite)
-			"http://127.0.0.1:3000",  // local dev (Vite)
-			"http://localhost",        // nginx HTTP (port 80)
-			"https://localhost",       // nginx HTTPS (port 443)
-			"http://localhost:80",     // nginx HTTP explicit
-			"https://localhost:443",   // nginx HTTPS explicit
-			"https://boko.com",
-		},
+		AllowOrigins:     allowOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		AllowCredentials: true,
@@ -80,8 +101,16 @@ func main() {
 	// Seed dữ liệu mẫu
 	seedData()
 
-	// Chạy server
-	r.Run(":8080")
+	// Backfill mã tra cứu cho đơn hàng cũ (trước bản vá T07)
+	backfillTrackingTokens()
+
+	// Chạy server — nền tảng cloud (Render...) cấp cổng qua biến môi trường
+	// PORT, local mặc định 8080.
+	port := strings.TrimSpace(os.Getenv("PORT"))
+	if port == "" {
+		port = "8080"
+	}
+	r.Run(":" + port)
 }
 
 // demoCatalogBooks — danh mục sách mẫu của frontend (app/src/data/books.ts).
@@ -285,6 +314,26 @@ func seedUser(email, passwordEnv, name, role string) {
 		config.DB.Model(&models.User{}).Where("email = ?", email).Update("password", string(hashed))
 		log.Printf("seed: đã đồng bộ lại mật khẩu cho %s từ %s", email, passwordEnv)
 	}
+}
+
+// backfillTrackingTokens — cấp mã tra cứu cho đơn tạo trước bản vá T07.
+// Chạy mỗi lần khởi động, chỉ chạm các dòng còn trống nên an toàn idempotent.
+func backfillTrackingTokens() {
+	var ids []uint
+	if err := config.DB.Model(&models.Order{}).
+		Where("tracking_token = '' OR tracking_token IS NULL").
+		Pluck("id", &ids).Error; err != nil || len(ids) == 0 {
+		return
+	}
+	for _, id := range ids {
+		var b [32]byte
+		if _, err := rand.Read(b[:]); err != nil {
+			continue
+		}
+		config.DB.Model(&models.Order{}).Where("id = ?", id).
+			Update("tracking_token", hex.EncodeToString(b[:]))
+	}
+	log.Printf("backfill: đã cấp tracking_token cho %d đơn hàng cũ", len(ids))
 }
 
 // getSeedEnv — đọc biến môi trường, dùng fallback khi trống

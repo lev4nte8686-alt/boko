@@ -161,15 +161,14 @@ export async function confirmOrderReceivedApi(orderId: number | string): Promise
 }
 
 /**
- * Lấy danh sách lịch sử đơn hàng của tôi
+ * Lấy danh sách lịch sử đơn hàng của tôi (đã đăng nhập).
+ * Khách vãng lai dùng getGuestOrderApi(orderId, token) với mã tra cứu
+ * nhận được lúc tạo đơn — KHÔNG còn tra cứu công khai bằng email.
  * Endpoint: GET /api/orders/my-orders
  */
 export async function getMyOrdersApi(email?: string): Promise<any[]> {
   const baseUrl = getBackendBaseUrl();
-  let url = `${baseUrl}/api/orders/my-orders`;
-  if (email) {
-    url += `?email=${encodeURIComponent(email)}`;
-  }
+  const url = `${baseUrl}/api/orders/my-orders`;
 
   const response = await fetch(url, {
     method: 'GET',
@@ -183,6 +182,30 @@ export async function getMyOrdersApi(email?: string): Promise<any[]> {
 
   if (!response.ok) {
     throw new Error(data.error || data.message || `Lỗi lấy danh sách đơn hàng: HTTP ${response.status}`);
+  }
+
+  return data.data || [];
+}
+
+/**
+ * Tra cứu 1 đơn hàng của khách vãng lai bằng mã tracking token.
+ * Endpoint: GET /api/orders/my-orders?order_id=&token=
+ */
+export async function getGuestOrderApi(orderId: number | string, token: string): Promise<any[]> {
+  const baseUrl = getBackendBaseUrl();
+  const url = `${baseUrl}/api/orders/my-orders?order_id=${encodeURIComponent(String(orderId))}&token=${encodeURIComponent(token)}`;
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(data.error || data.message || `Lỗi tra cứu đơn hàng: HTTP ${response.status}`);
   }
 
   return data.data || [];
@@ -249,6 +272,9 @@ export interface ShipmentApiResponse {
   }[];
   order_status?: string;
   message?: string;
+  // true khi đơn chạy trên gateway test của GHN (mã vận đơn test không có
+  // trên trang ghn.vn production — tra cứu ngay trong Boko)
+  ghn_test_mode?: boolean;
 }
 
 /**

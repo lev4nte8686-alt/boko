@@ -1,0 +1,53 @@
+# Boko backend — Render Blueprint (https://render.com/docs/blueprint-spec)
+# Cách dùng: Render Dashboard → New → Blueprint → chọn repo này.
+# Sau đó điền các biến môi trường có `sync: false` bên dưới.
+
+services:
+  - type: web
+    name: boko-backend
+    runtime: go
+    rootDir: server
+    buildCommand: go build -o boko-server .
+    startCommand: ./boko-server
+    plan: free
+    healthCheckPath: /
+    envVars:
+      # Render tự cấp PORT, không cần set tay.
+      - key: DATABASE_URL
+        sync: false # connection string Neon (khuyên dùng pooled URL) + DB_SIMPLE=true
+      - key: DB_SIMPLE
+        value: "true"
+      - key: DB_SSLMODE
+        value: require
+      - key: JWT_SECRET
+        sync: false # hex tối thiểu 64 ký tự (openssl rand -hex 32)
+      - key: APP_AES_KEY
+        sync: false # openssl rand -base64 32
+      - key: DB_PASSWORD
+        sync: false
+      - key: SEED_ADMIN_PASSWORD
+        sync: false
+      - key: SEED_CUSTOMER_PASSWORD
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false # URL web Vercel, VD: https://boko-web.vercel.app
+      - key: PAYPAL_MODE
+        value: sandbox
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_SECRET
+        sync: false
+      - key: GHN_TOKEN
+        sync: false
+      - key: GHN_SHOP_ID
+        sync: false
+      - key: GHN_WEBHOOK_SECRET
+        sync: false
+      - key: VNPAY_RETURN_URL
+        sync: false # https://<web-vercel>/payment/vnpay-callback
+      - key: VNPAY_IPN_URL
+        sync: false # https://<backend-render>/api/payment/vnpay/ipn
+      - key: MOMO_REDIRECT_URL
+        sync: false # https://<web-vercel>/payment/momo-callback
+      - key: MOMO_IPN_URL
+        sync: false # https://<backend-render>/api/payment/momo/ipn

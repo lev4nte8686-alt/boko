@@ -102,12 +102,18 @@ export async function createMomoPaymentApi(
 /**
  * Tra cứu trạng thái thanh toán của đơn hàng (có tự động đồng bộ từ MoMo Gateway)
  * Endpoint: GET /api/payment/momo/status/:id
+ * @param key mã gateway (orderId MoMo trên URL callback) — bắt buộc khi xem
+ *            đơn của khách vãng lai không đăng nhập.
  */
-export async function getPaymentStatusApi(orderId: number | string): Promise<PaymentStatusResponse> {
+export async function getPaymentStatusApi(
+  orderId: number | string,
+  key?: string
+): Promise<PaymentStatusResponse> {
   const baseUrl = getBaseUrl();
   const token = getAuthToken();
 
-  const response = await fetch(`${baseUrl}/api/payment/momo/status/${orderId}`, {
+  const qs = key ? `?key=${encodeURIComponent(key)}` : '';
+  const response = await fetch(`${baseUrl}/api/payment/momo/status/${orderId}${qs}`, {
     method: 'GET',
     headers: {
       Accept: 'application/json',

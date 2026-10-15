@@ -70,6 +70,9 @@ type Order struct {
 	DiscountPercent  int         `json:"discount_percent" gorm:"default:0"`
 	StockDeducted    bool        `json:"stock_deducted" gorm:"default:false"`
 	IdempotencyKey   string      `json:"idempotency_key" gorm:"index"`
+	// TrackingToken — mã tra cứu đơn không đoán được cho khách vãng lai
+	// (thay thế tra cứu công khai bằng email). Không expose trong JSON đơn hàng.
+	TrackingToken    string      `json:"-" gorm:"index"`
 	Items            []OrderItem `json:"items,omitempty" gorm:"foreignKey:OrderID"`
 	Shipment         *Shipment   `json:"shipment,omitempty" gorm:"foreignKey:OrderID"` // vận đơn GHN quản lý sau khi đóng gói
 	CreatedAt        time.Time   `json:"created_at"`
