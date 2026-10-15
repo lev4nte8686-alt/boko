@@ -58,7 +58,14 @@ export default function App() {
       if (!isBackendConfigured()) return;
 
       try {
-        const backendBooks = await fetchBooksFromBackend();
+        // Backend free-tier có thể đang ngủ (cold start): thử lại vài lần
+        // trước khi chịu fallback về dữ liệu demo (id chuỗi, không mua được).
+        let backendBooks: Book[] = [];
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          backendBooks = await fetchBooksFromBackend();
+          if (backendBooks.length > 0) break;
+          if (attempt < 3) await new Promise((r) => setTimeout(r, 8000));
+        }
         if (isMounted && backendBooks.length > 0) {
           // Lọc bỏ sách fixture test để không hiển thị rác kiểm thử lên UI
           const userFacingBackendBooks = backendBooks.filter(
