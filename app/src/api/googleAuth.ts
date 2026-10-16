@@ -75,7 +75,10 @@ function waitForGoogleScript(timeoutMs = 3000): Promise<boolean> {
  * - If VITE_GOOGLE_CLIENT_ID is empty: falls back gracefully to a seamless demo Google account
  */
 export async function loginWithGoogleOAuth(): Promise<AuthResponse> {
-  const clientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID || '').trim();
+  // Client ID công khai (Google OAuth Client ID) — override bằng VITE_GOOGLE_CLIENT_ID.
+  const DEFAULT_GOOGLE_CLIENT_ID =
+    '967136365401-66emp7n7t0q21ocav5db4a9trg5k688t.apps.googleusercontent.com';
+  const clientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID || DEFAULT_GOOGLE_CLIENT_ID).trim();
 
   // If Client ID is configured in .env, use real Google Identity Services OAuth
   if (clientId) {
