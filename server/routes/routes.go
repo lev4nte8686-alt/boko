@@ -23,6 +23,9 @@ func SetupRoutes(r *gin.Engine) {
 	r.POST("/api/auth/register", controllers.Register)
 	r.POST("/api/auth/logout", controllers.Logout)
 
+	// Đăng nhập Google (verify access_token với Google rồi cấp JWT của Boko)
+	r.POST("/api/auth/google", controllers.GoogleAuth)
+
 	// Đặt lại mật khẩu (quên mật khẩu) — token dùng 1 lần gửi qua email
 	r.POST("/api/auth/forgot-password", controllers.ForgotPassword)
 	r.POST("/api/auth/reset-password", controllers.ResetPassword)

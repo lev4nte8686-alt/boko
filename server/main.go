@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"log"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -166,9 +167,25 @@ func main() {
 			}
 		}
 	}
+
+	allowSet := make(map[string]bool, len(allowOrigins))
+	for _, o := range allowOrigins {
+		allowSet[strings.ToLower(o)] = true
+	}
+	// Cho phép mọi domain Vercel của dự án này (production + preview theo nhánh/commit):
+	//   https://boko-three.vercel.app, https://boko-three-git-main-xxx.vercel.app, ...
+	vercelProjectRe := regexp.MustCompile(`^https://boko-three(-[a-z0-9-]+)*\.vercel\.app$`)
+
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     allowOrigins,
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		// AllowOriginFunc trả về true cho origin hợp lệ (danh sách trên + Vercel của dự án).
+		AllowOriginFunc: func(origin string) bool {
+			lo := strings.ToLower(strings.TrimRight(origin, "/"))
+			if allowSet[lo] {
+				return true
+			}
+			return vercelProjectRe.MatchString(lo)
+		},
+		AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		// X-Idempotency-Key: checkout COD/ATM gửi kèm để chống tạo đơn trùng.
 		// Nếu KHÔNG khai báo ở đây, preflight sẽ bị browser chặn và fetch ném
 		// "TypeError: Failed to fetch" (đúng lỗi checkout trước đây).

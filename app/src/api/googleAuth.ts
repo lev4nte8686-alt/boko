@@ -134,9 +134,11 @@ export async function loginWithGoogleOAuth(): Promise<AuthResponse> {
                 bio: 'Độc giả đăng nhập qua tài khoản Google tại Boko Bookstore.',
               };
 
-              let finalToken = tokenResponse.access_token || '';
+              let finalToken = '';
 
-              // If remote backend host is configured, sync to server
+              // Nếu backend được cấu hình: BẮT BUỘC xác thực qua server để lấy
+              // JWT của Boko. KHÔNG dùng access_token của Google làm token phiên
+              // (server sẽ từ chối) — lỗi thì báo lỗi, không tạo phiên giả.
               if (isBackendConfigured()) {
                 const serverRes = await serverGoogleAuth({
                   google_id: profile.sub,
@@ -148,12 +150,19 @@ export async function loginWithGoogleOAuth(): Promise<AuthResponse> {
                   access_token: tokenResponse.access_token,
                 });
 
-                if (serverRes.success && serverRes.user) {
-                  finalUser = serverRes.user;
-                  if (serverRes.token) {
-                    finalToken = serverRes.token;
-                  }
+                if (!serverRes.success || !serverRes.token) {
+                  resolve({
+                    success: false,
+                    error: serverRes.error || 'Máy chủ chưa xác thực được tài khoản Google.',
+                  });
+                  return;
                 }
+                if (serverRes.user) {
+                  finalUser = serverRes.user;
+                }
+                finalToken = serverRes.token;
+              } else {
+                finalToken = tokenResponse.access_token || '';
               }
 
               try {
@@ -197,7 +206,18 @@ export async function loginWithGoogleOAuth(): Promise<AuthResponse> {
     });
   }
 
-  // Graceful fallback when VITE_GOOGLE_CLIENT_ID is not yet set in .env
+  // Chưa cấu hình VITE_GOOGLE_CLIENT_ID.
+  if (isBackendConfigured()) {
+    // Môi trường thật (có backend): KHÔNG tạo phiên giả — token demo bị chặn sẽ
+    // khiến người dùng tưởng đã đăng nhập nhưng không gọi được API.
+    return {
+      success: false,
+      error:
+        'Đăng nhập Google chưa được cấu hình. Vui lòng thêm VITE_GOOGLE_CLIENT_ID (Google OAuth Client ID) cho web.',
+    };
+  }
+
+  // Chế độ mô phỏng offline (không có backend) để dev giao diện.
   await new Promise((resolve) => setTimeout(resolve, 600));
 
   const demoGoogleUser: User = {
